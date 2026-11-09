@@ -3,7 +3,7 @@ import pandas as pd
 import io
 
 st.set_page_config(page_title="CRS Gain Validator", layout="centered")
-st.title("📊 ระบบตรวจเช็ค CRS Gain อัตโนมัติ")
+st.title("📊 ระบบตรวจเช็ค CRS Gain,pdschTypeBGain อัตโนมัติ")
 
 # 1. ส่วนลากวางไฟล์บนหน้าเว็บ
 uploaded_file = st.file_uploader("ลากไฟล์ Excel (.xlsx) มาวางที่นี่", type=["xlsx"])
