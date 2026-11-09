@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import io
 
 st.set_page_config(page_title="CRS Gain Validator", layout="centered")
 st.title("📊 ระบบตรวจเช็ค CRS Gain อัตโนมัติ")
@@ -16,35 +17,38 @@ def validate_row(crs, pdsch):
     except (ValueError, TypeError):
         return ""
     
-    valid_pairs = {300: 1, 477: 2, 600: 3, -300: 0, 177: 1, 0: 0}
+    valid_pairs = {300: 1, 477: 2, 600: 3, -300: 1, 177: 1, 0: 0}
     return 't' if crs_int in valid_pairs and valid_pairs[crs_int] == pdsch_int else 'f'
 
 if uploaded_file is not None:
     df = pd.read_excel(uploaded_file)
     
-    # ดึงคอลัมน์ D และ E
-    crs_col = df.columns[3]
-    pdsch_col = df.columns[4]
+    # ระบุชื่อคอลัมน์โดยตรง
+    crs_col = 'crsGain'
+    pdsch_col = 'pdschTypeBGain'
     
-    # ประมวลผล
-    df['result'] = [validate_row(c, p) for c, p in zip(df[crs_col], df[pdsch_col])]
-    
-    # แสดงตัวอย่างตารางผลลัพธ์บนหน้าเว็บ
-    st.success("✅ ตรวจสอบข้อมูลเรียบร้อยแล้ว!")
-    st.dataframe(df.head(10))
-    
-    # ปุ่มกดดาวน์โหลดไฟล์ผลลัพธ์
-    output_name = f"checked_{uploaded_file.name}"
-    
-    # แปลง dataframe เป็น excel สำหรับดาวน์โหลด
-    import io
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
+    # ตรวจสอบว่ามีคอลัมน์ที่ต้องการในไฟล์หรือไม่
+    if crs_col in df.columns and pdsch_col in df.columns:
+        # ประมวลผล
+        df['result'] = [validate_row(c, p) for c, p in zip(df[crs_col], df[pdsch_col])]
         
-    st.download_button(
-        label="📥 กดเพื่อดาวน์โหลดไฟล์ผลลัพธ์ (.xlsx)",
-        data=buffer.getvalue(),
-        file_name=output_name,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        # แสดงตัวอย่างตารางผลลัพธ์บนหน้าเว็บ
+        st.success("✅ ตรวจสอบข้อมูลเรียบร้อยแล้ว!")
+        st.dataframe(df.head(10))
+        
+        # ปุ่มกดดาวน์โหลดไฟล์ผลลัพธ์
+        output_name = f"checked_{uploaded_file.name}"
+        
+        # แปลง dataframe เป็น excel สำหรับดาวน์โหลด
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
+            
+        st.download_button(
+            label="📥 กดเพื่อดาวน์โหลดไฟล์ผลลัพธ์ (.xlsx)",
+            data=buffer.getvalue(),
+            file_name=output_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.error(f"❌ ไม่พบคอลัมน์ '{crs_col}' หรือ '{pdsch_col}' ในไฟล์ Excel กรุณาตรวจสอบชื่อคอลัมน์อีกครั้ง")
