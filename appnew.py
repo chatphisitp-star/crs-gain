@@ -21,19 +21,23 @@ def validate_row(crs, pdsch):
     return 't' if crs_int in valid_pairs and valid_pairs[crs_int] == pdsch_int else 'f'
 
 if uploaded_file is not None:
-    df = pd.read_excel(uploaded_file)
+    # อ่านไฟล์ Excel โดยใช้แถวที่ 4 (header=3) เป็นชื่อคอลัมน์
+    df = pd.read_excel(uploaded_file, header=3)
     
-    # ระบุชื่อคอลัมน์โดยตรง
+    # ตัดช่องว่างข้างหน้า/ข้างหลังของชื่อคอลัมน์ออกทั้งหมดเพื่อป้องกันพิมพ์เกิน
+    df.columns = df.columns.astype(str).str.strip()
+    
+    # ระบุชื่อคอลัมน์เป้าหมาย
     crs_col = 'crsGain'
     pdsch_col = 'pdschTypeBGain'
     
-    # ตรวจสอบว่ามีคอลัมน์ที่ต้องการในไฟล์หรือไม่
+    # ตรวจสอบว่าพบคอลัมน์ที่ต้องการหรือไม่
     if crs_col in df.columns and pdsch_col in df.columns:
-        # ประมวลผล
+        # ประมวลผลสร้างคอลัมน์ result
         df['result'] = [validate_row(c, p) for c, p in zip(df[crs_col], df[pdsch_col])]
         
         # แสดงตัวอย่างตารางผลลัพธ์บนหน้าเว็บ
-        st.success("✅ ตรวจสอบข้อมูลเรียบร้อยแล้ว!")
+        st.success(f"✅ ตรวจสอบข้อมูลเรียบร้อยแล้ว! (ดึงข้อมูลจากคอลัมน์ '{crs_col}' และ '{pdsch_col}')")
         st.dataframe(df.head(10))
         
         # ปุ่มกดดาวน์โหลดไฟล์ผลลัพธ์
@@ -51,4 +55,4 @@ if uploaded_file is not None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error(f"❌ ไม่พบคอลัมน์ '{crs_col}' หรือ '{pdsch_col}' ในไฟล์ Excel กรุณาตรวจสอบชื่อคอลัมน์อีกครั้ง")
+        st.error(f"❌ ไม่พบคอลัมน์ '{crs_col}' หรือ '{pdsch_col}' ในแถวที่ 4 ของไฟล์ Excel กรุณาตรวจสอบชื่อคอลัมน์อีกครั้ง")
