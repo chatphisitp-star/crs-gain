@@ -193,13 +193,13 @@ if uploaded_files:
         c4.metric("รวมรายการ", f"{total_t + total_f:,}")
 
         # ==================================================
-        # 6. STACKED BAR CHART (ชื่อไฟล์กระชับ แนวนอนอ่านง่าย)
+        # 6. STACKED BAR CHART (พร้อมฟีเจอร์กดดาวน์โหลดรูปภาพ)
         # ==================================================
 
         st.divider()
         st.header("📈 กราฟเปรียบเทียบทุกไฟล์ Excel (1 ไฟล์ = 1 แท่ง)")
+        st.caption("💡 สามารถกดปุ่มจุด 3 จุด (⋮) หรือไอคอนกล้อง/ดาวน์โหลดที่มุมขวาบนของกราฟเพื่อเซฟเป็นไฟล์รูปภาพได้ทันที")
 
-        # ฟังก์ชันตัดชื่อไฟล์ให้สั้นลง ป้องกัน Streamlit หมุนแกน X เป็นแนวตั้ง
         def shorten_name(name, max_len=16):
             clean = name.replace(".xlsx", "")
             return clean if len(clean) <= max_len else clean[:max_len-3] + "..."
@@ -213,7 +213,7 @@ if uploaded_files:
             for r in all_results
         ]).set_index("Excel File")
 
-        # แสดงผลแบบ Stacked (f อยู่บน / t อยู่ล่าง)
+        # บล็อกแสดงกราฟแท่งแบบ Stacked พร้อมปุ่มเมนูดาวน์โหลดรูปอัตโนมัติ
         st.bar_chart(
             comparison_df,
             color=["#E05252", "#2878D0"],
@@ -221,7 +221,6 @@ if uploaded_files:
             stack=True
         )
 
-        # ตารางเปรียบเทียบแสดงชื่อไฟล์เต็มตามปกติ
         full_table_df = pd.DataFrame([
             {
                 "Excel File": r["filename"],
