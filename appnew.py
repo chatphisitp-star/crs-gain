@@ -3,7 +3,6 @@ import re
 import zipfile
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
 
 st.set_page_config(
     page_title="CRS Gain Validator",
@@ -177,7 +176,7 @@ if uploaded_files:
         progress.progress((index + 1) / len(files))
 
     # ==================================================
-    # 5. SUMMARY & STACKED BAR CHART
+    # 5. SUMMARY & BAR CHART
     # ==================================================
 
     if all_results:
@@ -194,42 +193,36 @@ if uploaded_files:
         c4.metric("รวมรายการ", f"{total_t + total_f:,}")
 
         # ==================================================
-        # 6. STACKED BAR CHART (บังคับแกน X เป็นแนวนอน)
+        # 6. STACKED BAR CHART (ชื่อไฟล์กระชับ แนวนอนอ่านง่าย)
         # ==================================================
 
         st.divider()
         st.header("📈 กราฟเปรียบเทียบทุกไฟล์ Excel (1 ไฟล์ = 1 แท่ง)")
 
-        fig, ax = plt.subplots(figsize=(10, 4.5))
-        
-        filenames = [r["filename"] for r in all_results]
-        f_counts = [r["f"] for r in all_results]
-        t_counts = [r["t"] for r in all_results]
-
-        # วาดแท่ง t ไว้ล่าง (สีฟ้า) และ f ไว้บน (สีแดง)
-        ax.bar(filenames, t_counts, label="t - Correct", color="#2878D0")
-        ax.bar(filenames, f_counts, bottom=t_counts, label="f - Incorrect", color="#E05252")
-
-        ax.set_ylabel("จำนวนรายการ")
-        ax.legend(facecolor='#262730', edgecolor='none', labelcolor='white')
-        
-        # บังคับตัวหนังสือแกน X ให้เป็นแนวนอน
-        plt.xticks(rotation=0)
-
-        # ตกแต่งสไตล์ Dark Theme ให้เข้ากับ Streamlit
-        fig.patch.set_alpha(0.0)
-        ax.set_facecolor("none")
-        ax.spines['bottom'].set_color('white')
-        ax.spines['left'].set_color('white')
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.xaxis.label.set_color('white')
-        ax.yaxis.label.set_color('white')
-        ax.tick_params(colors='white')
-
-        st.pyplot(fig)
+        # ฟังก์ชันตัดชื่อไฟล์ให้สั้นลง ป้องกัน Streamlit หมุนแกน X เป็นแนวตั้ง
+        def shorten_name(name, max_len=16):
+            clean = name.replace(".xlsx", "")
+            return clean if len(clean) <= max_len else clean[:max_len-3] + "..."
 
         comparison_df = pd.DataFrame([
+            {
+                "Excel File": shorten_name(r["filename"]),
+                "f - Incorrect": r["f"],
+                "t - Correct": r["t"]
+            }
+            for r in all_results
+        ]).set_index("Excel File")
+
+        # แสดงผลแบบ Stacked (f อยู่บน / t อยู่ล่าง)
+        st.bar_chart(
+            comparison_df,
+            color=["#E05252", "#2878D0"],
+            height=450,
+            stack=True
+        )
+
+        # ตารางเปรียบเทียบแสดงชื่อไฟล์เต็มตามปกติ
+        full_table_df = pd.DataFrame([
             {
                 "Excel File": r["filename"],
                 "f - Incorrect": r["f"],
@@ -237,8 +230,7 @@ if uploaded_files:
             }
             for r in all_results
         ])
-
-        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+        st.dataframe(full_table_df, use_container_width=True, hide_index=True)
 
         # ==================================================
         # 7. INDIVIDUAL DETAILS
