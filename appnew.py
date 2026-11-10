@@ -11,20 +11,14 @@ st.set_page_config(
 )
 
 st.title("📊 CRS Gain Validator")
-st.subheader("ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ")
+st.subheader("ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ (รองรับหลาย Week)")
+
+# ใช้ session_state สำหรับเก็บประวัติกราฟแต่ละ Week
+if "weeks_data" not in st.session_state:
+    st.session_state.weeks_data = {}
 
 # ==================================================
-# 1. UPLOAD EXCEL
-# ==================================================
-
-uploaded_files = st.file_uploader(
-    "📂 ลากไฟล์ Excel มาวางที่นี่ (สูงสุด 30 ไฟล์)",
-    type=["xlsx"],
-    accept_multiple_files=True
-)
-
-# ==================================================
-# 2. VALIDATION RULES
+# 1. VALIDATION RULES & HELPER FUNCTIONS
 # ==================================================
 
 VALID_PAIRS = {
@@ -77,17 +71,10 @@ def fix_pdsch_val(crs, pdsch):
     return pdsch
 
 
-# ==================================================
-# 3. PROCESS EXCEL
-# ==================================================
-
 def process_excel(uploaded_file):
     file_bytes = uploaded_file.getvalue()
 
-    # อ่านข้อมูลทั้งหมดโดยไม่ตัด Header
     df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
-
-    # อ่าน Header ที่ Row 4 (index 3)
     df_header = pd.read_excel(io.BytesIO(file_bytes), header=3)
 
     crs_col_idx = None
@@ -104,11 +91,9 @@ def process_excel(uploaded_file):
     if crs_col_idx is None or pdsch_col_idx is None:
         raise ValueError("ไม่พบ 'crsGain' หรือ 'pdschTypeBGain' ใน Row 4")
 
-    # อ่านข้อมูลตั้งแต่ Row 5 (index 4)
     crs_series = df_full.iloc[4:, crs_col_idx]
     pdsch_series = df_full.iloc[4:, pdsch_col_idx]
 
-    # ตรวจสอบและแก้ไข
     results = [validate_row(c, p) for c, p in zip(crs_series, pdsch_series)]
     fixed_pdsch = [fix_pdsch_val(c, p) for c, p in zip(crs_series, pdsch_series)]
 
@@ -130,7 +115,6 @@ def process_excel(uploaded_file):
     for i, val in enumerate(fixed_pdsch):
         df_fixed.iloc[4 + i, pdsch_col_idx] = val
 
-    # แปลงเป็น Bytes ล่วงหน้าเพื่อประสิทธิภาพการดาวน์โหลด
     checked_bytes = io.BytesIO()
     with pd.ExcelWriter(checked_bytes, engine="openpyxl") as writer:
         df_checked.to_excel(writer, index=False, header=False)
@@ -151,144 +135,134 @@ def process_excel(uploaded_file):
 
 
 # ==================================================
-# 4. PROCESS MULTIPLE FILES
+# 2. UPLOAD SECTION (แยกเป็น 2 ชุดไฟล์)
 # ==================================================
 
-if uploaded_files:
+col_w1, col_w2 = st.columns(2)
 
-    if len(uploaded_files) > 30:
-        st.warning("⚠️ เพิ่มไฟล์มากกว่า 30 ไฟล์ ระบบจะประมวลผลเฉพาะ 30 ไฟล์แรกเท่านั้น")
+with col_w1:
+    st.subheader("📅 ชุดที่ 1 (Week 1)")
+    week1_name = st.text_input("ชื่อแท่งกราฟชุดที่ 1:", value="202616", key="w1_name")
+    uploaded_files_1 = st.file_uploader(
+        "📂 ลากไฟล์ Excel (ชุดที่ 1) มาวางที่นี่",
+        type=["xlsx"],
+        accept_multiple_files=True,
+        key="uploader_1"
+    )
 
-    files = uploaded_files[:30]
+with col_w2:
+    st.subheader("📅 ชุดที่ 2 (Week 2)")
+    week2_name = st.text_input("ชื่อแท่งกราฟชุดที่ 2:", value="202617", key="w2_name")
+    uploaded_files_2 = st.file_uploader(
+        "📂 ลากไฟล์ Excel (ชุดที่ 2) มาวางที่นี่",
+        type=["xlsx"],
+        accept_multiple_files=True,
+        key="uploader_2"
+    )
+
+# ==================================================
+# 3. PROCESS FILES FOR BOTH WEEKS
+# ==================================================
+
+chart_rows = []
+
+def process_file_list(files_list, week_label):
     all_results = []
+    for uploaded_file in files_list[:30]:
+        try:
+            res = process_excel(uploaded_file)
+            all_results.append(res)
+        except Exception as e:
+            st.error(f"❌ [{week_label}] {uploaded_file.name}: {str(e)}")
+    return all_results
+
+# ประมวลผลชุดที่ 1
+results_w1 = process_file_list(uploaded_files_1, week1_name) if uploaded_files_1 else []
+if results_w1:
+    tot_t1 = sum(r["t"] for r in results_w1)
+    tot_f1 = sum(r["f"] for r in results_w1)
+    chart_rows.append({
+        "Week": week1_name,
+        "f - Incorrect": tot_f1,
+        "t - Correct": tot_t1
+    })
+
+# ประมวลผลชุดที่ 2
+results_w2 = process_file_list(uploaded_files_2, week2_name) if uploaded_files_2 else []
+if results_w2:
+    tot_t2 = sum(r["t"] for r in results_w2)
+    tot_f2 = sum(r["f"] for r in results_w2)
+    chart_rows.append({
+        "Week": week2_name,
+        "f - Incorrect": tot_f2,
+        "t - Correct": tot_t2
+    })
+
+# ==================================================
+# 4. SHOW COMBINED CHART (กราฟแท่งต่อด้านข้าง)
+# ==================================================
+
+if chart_rows:
+    st.divider()
+    st.header("📈 กราฟเปรียบเทียบระหว่าง Week (1 ชุดไฟล์ = 1 แท่ง)")
+
+    combined_df = pd.DataFrame(chart_rows).set_index("Week")
+
+    # แสดงแท่งกราฟของ Week 1 และ Week 2 เรียงต่อกันบนแกน X
+    st.bar_chart(
+        combined_df,
+        color=["#E05252", "#2878D0"],
+        height=450,
+        stack=True
+    )
+
+    st.dataframe(combined_df.reset_index(), use_container_width=True, hide_index=True)
+
+    # ==================================================
+    # 5. DOWNLOAD SECTION FOR BOTH WEEKS
+    # ==================================================
 
     st.divider()
-    st.header("📋 ผลการตรวจสอบ")
-    progress = st.progress(0)
+    st.header("📥 ดาวน์โหลดไฟล์ Excel แยกตามชุด")
 
-    for index, uploaded_file in enumerate(files):
-        try:
-            result = process_excel(uploaded_file)
-            all_results.append(result)
-        except Exception as e:
-            st.error(f"❌ {uploaded_file.name}: {str(e)}")
+    tab1, tab2 = st.tabs([f"📦 {week1_name}", f"📦 {week2_name}"])
 
-        progress.progress((index + 1) / len(files))
+    with tab1:
+        if results_w1:
+            zip_b1 = io.BytesIO()
+            with zipfile.ZipFile(zip_b1, "w", zipfile.ZIP_DEFLATED) as z:
+                for r in results_w1:
+                    z.writestr(f"checked_{r['filename']}", r["checked_bytes"])
+                    z.writestr(f"fixed_{r['filename']}", r["fixed_bytes"])
 
-    # ==================================================
-    # 5. SUMMARY & SINGLE COMBINED BAR CHART
-    # ==================================================
-
-    if all_results:
-        total_t = sum(r["t"] for r in all_results)
-        total_f = sum(r["f"] for r in all_results)
-
-        st.divider()
-        st.header("📊 ภาพรวมทั้งหมด")
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("จำนวนไฟล์", len(all_results))
-        c2.metric("t - ถูกต้อง", f"{total_t:,}")
-        c3.metric("f - ผิดพลาด", f"{total_f:,}")
-        c4.metric("รวมรายการ", f"{total_t + total_f:,}")
-
-        # ==================================================
-        # 6. SINGLE BAR CHART (สามารถแก้ไขชื่อแกน X ได้)
-        # ==================================================
-
-        st.divider()
-        st.header("📈 กราฟรวมผลการตรวจสอบ (รวมทุกไฟล์เป็น 1 แท่ง)")
-
-        # ช่องกรอกแก้ไขชื่อแกน X ได้ตลอดเวลา
-        custom_label = st.text_input("🏷️ ระบุชื่อหมวดหมู่บนแกน X:", value="WEEK")
-
-        # ป้องกันกรณีช่องกรอกถูกลบเป็นค่าว่าง
-        x_label = custom_label.strip() if custom_label.strip() else "WEEK"
-
-        # สร้าง DataFrame โดยใช้ชื่อแกน X ตามที่พิมพ์กรอกไว้
-        total_chart_df = pd.DataFrame([
-            {
-                "Category": x_label,
-                "f - Incorrect": total_f,
-                "t - Correct": total_t
-            }
-        ]).set_index("Category")
-
-        # แสดงแท่งกราฟเดี่ยวซ้อนกัน (f อยู่บน / t อยู่ล่าง)
-        st.bar_chart(
-            total_chart_df,
-            color=["#E05252", "#2878D0"],
-            height=450,
-            stack=True
-        )
-
-        # ==================================================
-        # 7. INDIVIDUAL DETAILS
-        # ==================================================
-
-        st.divider()
-        st.header("📊 รายละเอียดแยกตามไฟล์")
-
-        for index, result in enumerate(all_results):
-            with st.expander(
-                f"📁 {result['filename']} | t = {result['t']:,} | f = {result['f']:,}",
-                expanded=False
-            ):
-                col1, col2, col3 = st.columns(3)
-                col1.metric("t - ถูกต้อง", result["t"])
-                col2.metric("f - ผิดพลาด", result["f"])
-                col3.metric("รวมรายการ", result["t"] + result["f"])
-
-                st.caption("ตัวอย่างข้อมูล Checked (15 แถวแรก)")
-                st.dataframe(result["checked"].head(15), use_container_width=True)
-
-        # ==================================================
-        # 8. DOWNLOAD FILES (BULK & INDIVIDUAL)
-        # ==================================================
-
-        st.divider()
-        st.header("📥 ดาวน์โหลดไฟล์ Excel")
-
-        # ZIP Download All
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for r in all_results:
-                zip_file.writestr(f"checked_{r['filename']}", r["checked_bytes"])
-                zip_file.writestr(f"fixed_{r['filename']}", r["fixed_bytes"])
-
-        st.download_button(
-            "📦 ดาวน์โหลดไฟล์ทั้งหมด (ZIP)",
-            data=zip_buffer.getvalue(),
-            file_name="crs_validation_results.zip",
-            mime="application/zip",
-            type="primary",
-            use_container_width=True
-        )
-
-        st.write("")
-
-        # Individual Download
-        for index, result in enumerate(all_results):
-            st.markdown(f"**📁 {result['filename']}**")
-            col1, col2 = st.columns(2)
-
-            col1.download_button(
-                "📥 ดาวน์โหลด Checked",
-                data=result["checked_bytes"],
-                file_name=f"checked_{result['filename']}",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"checked_{index}"
+            st.download_button(
+                f"📦 ดาวน์โหลดไฟล์ทั้งหมดของ {week1_name} (ZIP)",
+                data=zip_b1.getvalue(),
+                file_name=f"crs_{week1_name}_results.zip",
+                mime="application/zip",
+                type="primary",
+                use_container_width=True
             )
+        else:
+            st.info("ยังไม่มีการอัปโหลดไฟล์ในชุดที่ 1")
 
-            col2.download_button(
-                "🛠️ ดาวน์โหลด Fixed",
-                data=result["fixed_bytes"],
-                file_name=f"fixed_{result['filename']}",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"fixed_{index}"
+    with tab2:
+        if results_w2:
+            zip_b2 = io.BytesIO()
+            with zipfile.ZipFile(zip_b2, "w", zipfile.ZIP_DEFLATED) as z:
+                for r in results_w2:
+                    z.writestr(f"checked_{r['filename']}", r["checked_bytes"])
+                    z.writestr(f"fixed_{r['filename']}", r["fixed_bytes"])
+
+            st.download_button(
+                f"📦 ดาวน์โหลดไฟล์ทั้งหมดของ {week2_name} (ZIP)",
+                data=zip_b2.getvalue(),
+                file_name=f"crs_{week2_name}_results.zip",
+                mime="application/zip",
+                type="primary",
+                use_container_width=True
             )
+        else:
+            st.info("ยังไม่มีการอัปโหลดไฟล์ในชุดที่ 2")
 
-        st.success("🎉 ประมวลผลเรียบร้อยแล้ว!")
-
-    else:
-        st.error("ไม่สามารถประมวลผลไฟล์ Excel ได้")
+    st.success("🎉 ประมวลผลเรียบร้อยแล้ว!")
