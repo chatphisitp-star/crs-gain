@@ -202,7 +202,7 @@ if uploaded_files:
         # สร้าง DataFrame แท่งเดี่ยว รวมค่า f และ t ทั้งหมดเข้าด้วยกัน
         total_chart_df = pd.DataFrame([
             {
-                "Category": "Total Results",
+                "Category": "WEEK",
                 "f - Incorrect": total_f,
                 "t - Correct": total_t
             }
