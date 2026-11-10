@@ -176,7 +176,7 @@ if uploaded_files:
         progress.progress((index + 1) / len(files))
 
     # ==================================================
-    # 5. SUMMARY & STACKED BAR CHART (1 ไฟล์ = 1 แท่ง)
+    # 5. SUMMARY & STACKED BAR CHART
     # ==================================================
 
     if all_results:
@@ -193,25 +193,25 @@ if uploaded_files:
         c4.metric("รวมรายการ", f"{total_t + total_f:,}")
 
         # ==================================================
-        # 6. COMPARISON CHART (1 ไฟล์ = 1 แท่ง Stacked)
+        # 6. COMPARISON CHART (1 ไฟล์ = 1 แท่ง / f บน / t ล่าง)
         # ==================================================
 
         st.divider()
         st.header("📈 กราฟเปรียบเทียบทุกไฟล์ Excel (1 ไฟล์ = 1 แท่ง)")
 
+        # สลับเอา f ขึ้นก่อน t เพื่อให้ส่วนที่เป็น f แสดงซ้อนอยู่ด้านบนสุด
         comparison_df = pd.DataFrame([
             {
                 "Excel File": r["filename"],
-                "t - Correct": r["t"],
-                "f - Incorrect": r["f"]
+                "f - Incorrect": r["f"],
+                "t - Correct": r["t"]
             }
             for r in all_results
         ]).set_index("Excel File")
 
-        # แสดงแท่งกราฟซ้อนกันต่อ 1 ไฟล์แบบในรูปตัวอย่าง
         st.bar_chart(
             comparison_df,
-            color=["#2878D0", "#E05252"],
+            color=["#E05252", "#2878D0"],  # สีแดงสำหรับ f และสีฟ้าสำหรับ t
             height=500,
             stack=True
         )
@@ -245,7 +245,7 @@ if uploaded_files:
         st.divider()
         st.header("📥 ดาวน์โหลดไฟล์ Excel")
 
-        # สร้าง ZIP สำหรับดาวน์โหลดทั้งหมดในปุ่มเดียว
+        # ZIP Download All
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for r in all_results:
@@ -261,9 +261,9 @@ if uploaded_files:
             use_container_width=True
         )
 
-        st.write("")  # เว้นวรรค
+        st.write("")
 
-        # ดาวน์โหลดแยกตามไฟล์
+        # Individual Download
         for index, result in enumerate(all_results):
             st.markdown(f"**📁 {result['filename']}**")
             col1, col2 = st.columns(2)
