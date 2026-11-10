@@ -2,7 +2,6 @@ import io
 import re
 import zipfile
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
 st.set_page_config(
@@ -194,51 +193,31 @@ if uploaded_files:
         c4.metric("รวมรายการ", f"{total_t + total_f:,}")
 
         # ==================================================
-        # 6. STACKED BAR CHART (แกน X แนวนอน / f บน / t ล่าง)
+        # 6. STACKED BAR CHART (STREAMLIT BUILT-IN)
         # ==================================================
 
         st.divider()
         st.header("📈 กราฟเปรียบเทียบทุกไฟล์ Excel (1 ไฟล์ = 1 แท่ง)")
 
-        chart_data = []
-        for r in all_results:
-            chart_data.append({
+        # กำหนดให้ f อยู่ด้านบน และ t อยู่ด้านล่าง
+        comparison_df = pd.DataFrame([
+            {
                 "Excel File": r["filename"],
-                "Result": "t - Correct",
-                "Count": r["t"]
-            })
-            chart_data.append({
-                "Excel File": r["filename"],
-                "Result": "f - Incorrect",
-                "Count": r["f"]
-            })
+                "f - Incorrect": r["f"],
+                "t - Correct": r["t"]
+            }
+            for r in all_results
+        ]).set_index("Excel File")
 
-        df_chart_long = pd.DataFrame(chart_data)
-
-        # สร้างกราฟด้วย Plotly Express
-        fig = px.bar(
-            df_chart_long,
-            x="Excel File",
-            y="Count",
-            color="Result",
-            color_discrete_map={
-                "t - Correct": "#2878D0",    # สีฟ้าด้านล่าง
-                "f - Incorrect": "#E05252"   # สีแดงด้านบน
-            },
-            category_orders={"Result": ["t - Correct", "f - Incorrect"]},  # สลับให้ f อยู่ด้านบน
-            barmode="stack",
-            height=500
+        # ใช้ Streamlit Built-in Bar Chart
+        st.bar_chart(
+            comparison_df,
+            color=["#E05252", "#2878D0"],  # สีแดงสำหรับ f และสีฟ้าสำหรับ t
+            height=500,
+            stack=True
         )
 
-        # ปรับแต่งแกน X ให้เป็นแนวนอน (xaxis_tickangle=0)
-        fig.update_layout(
-            xaxis_tickangle=0,
-            xaxis_title="ชื่อไฟล์ Excel",
-            yaxis_title="จำนวนรายการ",
-            legend_title="สถานะ"
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(comparison_df.reset_index(), use_container_width=True, hide_index=True)
 
         # ==================================================
         # 7. INDIVIDUAL DETAILS
