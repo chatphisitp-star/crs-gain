@@ -2,7 +2,6 @@ import io
 import re
 import zipfile
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
 st.set_page_config(
@@ -46,7 +45,7 @@ def clean_col_name(name: str) -> str:
 
 
 def parse_int_safe(val):
-    """แปลงค่าเป็น int อย่างปลอดภัย รองรับ string, float"""
+    """แปลงค่าเป็น int อย่างปลอดภัย รองรับ string, float (เช่น 300.0)"""
     if pd.isna(val):
         return None
     try:
@@ -85,7 +84,10 @@ def fix_pdsch_val(crs, pdsch):
 def process_excel(uploaded_file):
     file_bytes = uploaded_file.getvalue()
 
+    # อ่านข้อมูลทั้งหมดโดยไม่ตัด Header
     df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
+
+    # อ่าน Header ที่ Row 4 (index 3)
     df_header = pd.read_excel(io.BytesIO(file_bytes), header=3)
 
     crs_col_idx = None
@@ -102,9 +104,11 @@ def process_excel(uploaded_file):
     if crs_col_idx is None or pdsch_col_idx is None:
         raise ValueError("ไม่พบ 'crsGain' หรือ 'pdschTypeBGain' ใน Row 4")
 
+    # อ่านข้อมูลตั้งแต่ Row 5 (index 4)
     crs_series = df_full.iloc[4:, crs_col_idx]
     pdsch_series = df_full.iloc[4:, pdsch_col_idx]
 
+    # ตรวจสอบและแก้ไข
     results = [validate_row(c, p) for c, p in zip(crs_series, pdsch_series)]
     fixed_pdsch = [fix_pdsch_val(c, p) for c, p in zip(crs_series, pdsch_series)]
 
@@ -126,6 +130,7 @@ def process_excel(uploaded_file):
     for i, val in enumerate(fixed_pdsch):
         df_fixed.iloc[4 + i, pdsch_col_idx] = val
 
+    # แปลงเป็น Bytes ล่วงหน้าเพื่อประสิทธิภาพการดาวน์โหลด
     checked_bytes = io.BytesIO()
     with pd.ExcelWriter(checked_bytes, engine="openpyxl") as writer:
         df_checked.to_excel(writer, index=False, header=False)
@@ -188,61 +193,59 @@ if uploaded_files:
         c4.metric("รวมรายการ", f"{total_t + total_f:,}")
 
         # ==================================================
-        # 6. STACKED BAR CHART PER FILE
+        # 6. COMPARISON CHART (1 ไฟล์ = 1 แท่ง Stacked)
         # ==================================================
 
         st.divider()
-        st.header("📈 กราฟแสดงผลรวมแยกตามไฟล์ (1 ไฟล์ = 1 แท่ง)")
+        st.header("📈 กราฟเปรียบเทียบทุกไฟล์ Excel (1 ไฟล์ = 1 แท่ง)")
 
-        # เตรียมข้อมูลสำหรับ Plotly Stacked Bar Chart
-        chart_data = []
-        for r in all_results:
-            chart_data.append({
+        comparison_df = pd.DataFrame([
+            {
                 "Excel File": r["filename"],
-                "Result": "t - Correct",
-                "Count": r["t"]
-            })
-            chart_data.append({
-                "Excel File": r["filename"],
-                "Result": "f - Incorrect",
-                "Count": r["f"]
-            })
+                "t - Correct": r["t"],
+                "f - Incorrect": r["f"]
+            }
+            for r in all_results
+        ]).set_index("Excel File")
 
-        df_chart_long = pd.DataFrame(chart_data)
-
-        # สร้าง Stacked Bar Chart ด้วย Plotly
-        fig = px.bar(
-            df_chart_long,
-            x="Excel File",
-            y="Count",
-            color="Result",
-            color_discrete_map={
-                "t - Correct": "#2878D0",   # สีฟ้า/เขียว
-                "f - Incorrect": "#E05252"  # สีแดง/ส้ม
-            },
-            barmode="stack",
-            title="เปรียบเทียบสัดส่วน t / f รายไฟล์ (เรียงต่อกัน)",
-            height=500
+        # แสดงแท่งกราฟซ้อนกันต่อ 1 ไฟล์แบบในรูปตัวอย่าง
+        st.bar_chart(
+            comparison_df,
+            color=["#2878D0", "#E05252"],
+            height=500,
+            stack=True
         )
 
-        # ปรับแต่งให้แกน X หมุนแนวตั้ง 90 องศาเหมือนในรูปภาพตัวอย่าง
-        fig.update_layout(
-            xaxis_tickangle=-90,
-            xaxis_title="ชื่อไฟล์ Excel",
-            yaxis_title="จำนวนรายการทั้งหมด",
-            legend_title="สถานะ"
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(comparison_df.reset_index(), use_container_width=True, hide_index=True)
 
         # ==================================================
-        # 7. DOWNLOAD FILES (BULK & INDIVIDUAL)
+        # 7. INDIVIDUAL DETAILS
+        # ==================================================
+
+        st.divider()
+        st.header("📊 รายละเอียดแยกตามไฟล์")
+
+        for index, result in enumerate(all_results):
+            with st.expander(
+                f"📁 {result['filename']} | t = {result['t']:,} | f = {result['f']:,}",
+                expanded=False
+            ):
+                col1, col2, col3 = st.columns(3)
+                col1.metric("t - ถูกต้อง", result["t"])
+                col2.metric("f - ผิดพลาด", result["f"])
+                col3.metric("รวมรายการ", result["t"] + result["f"])
+
+                st.caption("ตัวอย่างข้อมูล Checked (15 แถวแรก)")
+                st.dataframe(result["checked"].head(15), use_container_width=True)
+
+        # ==================================================
+        # 8. DOWNLOAD FILES (BULK & INDIVIDUAL)
         # ==================================================
 
         st.divider()
         st.header("📥 ดาวน์โหลดไฟล์ Excel")
 
-        # ZIP Download All
+        # สร้าง ZIP สำหรับดาวน์โหลดทั้งหมดในปุ่มเดียว
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for r in all_results:
@@ -258,27 +261,30 @@ if uploaded_files:
             use_container_width=True
         )
 
-        st.write("")
+        st.write("")  # เว้นวรรค
 
-        # Individual Download
+        # ดาวน์โหลดแยกตามไฟล์
         for index, result in enumerate(all_results):
-            with st.expander(f"📁 {result['filename']} | t = {result['t']:,} | f = {result['f']:,}"):
-                col1, col2 = st.columns(2)
+            st.markdown(f"**📁 {result['filename']}**")
+            col1, col2 = st.columns(2)
 
-                col1.download_button(
-                    "📥 ดาวน์โหลด Checked",
-                    data=result["checked_bytes"],
-                    file_name=f"checked_{result['filename']}",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"checked_{index}"
-                )
+            col1.download_button(
+                "📥 ดาวน์โหลด Checked",
+                data=result["checked_bytes"],
+                file_name=f"checked_{result['filename']}",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"checked_{index}"
+            )
 
-                col2.download_button(
-                    "🛠️ ดาวน์โหลด Fixed",
-                    data=result["fixed_bytes"],
-                    file_name=f"fixed_{result['filename']}",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"fixed_{index}"
-                )
+            col2.download_button(
+                "🛠️ ดาวน์โหลด Fixed",
+                data=result["fixed_bytes"],
+                file_name=f"fixed_{result['filename']}",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"fixed_{index}"
+            )
 
         st.success("🎉 ประมวลผลเรียบร้อยแล้ว!")
+
+    else:
+        st.error("ไม่สามารถประมวลผลไฟล์ Excel ได้")
