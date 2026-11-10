@@ -3,6 +3,7 @@ import re
 import zipfile
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 
 st.set_page_config(
     page_title="CRS Gain Validator",
@@ -193,13 +194,41 @@ if uploaded_files:
         c4.metric("รวมรายการ", f"{total_t + total_f:,}")
 
         # ==================================================
-        # 6. STACKED BAR CHART (STREAMLIT BUILT-IN)
+        # 6. STACKED BAR CHART (บังคับแกน X เป็นแนวนอน)
         # ==================================================
 
         st.divider()
         st.header("📈 กราฟเปรียบเทียบทุกไฟล์ Excel (1 ไฟล์ = 1 แท่ง)")
 
-        # กำหนดให้ f อยู่ด้านบน และ t อยู่ด้านล่าง
+        fig, ax = plt.subplots(figsize=(10, 4.5))
+        
+        filenames = [r["filename"] for r in all_results]
+        f_counts = [r["f"] for r in all_results]
+        t_counts = [r["t"] for r in all_results]
+
+        # วาดแท่ง t ไว้ล่าง (สีฟ้า) และ f ไว้บน (สีแดง)
+        ax.bar(filenames, t_counts, label="t - Correct", color="#2878D0")
+        ax.bar(filenames, f_counts, bottom=t_counts, label="f - Incorrect", color="#E05252")
+
+        ax.set_ylabel("จำนวนรายการ")
+        ax.legend(facecolor='#262730', edgecolor='none', labelcolor='white')
+        
+        # บังคับตัวหนังสือแกน X ให้เป็นแนวนอน
+        plt.xticks(rotation=0)
+
+        # ตกแต่งสไตล์ Dark Theme ให้เข้ากับ Streamlit
+        fig.patch.set_alpha(0.0)
+        ax.set_facecolor("none")
+        ax.spines['bottom'].set_color('white')
+        ax.spines['left'].set_color('white')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        ax.tick_params(colors='white')
+
+        st.pyplot(fig)
+
         comparison_df = pd.DataFrame([
             {
                 "Excel File": r["filename"],
@@ -207,17 +236,9 @@ if uploaded_files:
                 "t - Correct": r["t"]
             }
             for r in all_results
-        ]).set_index("Excel File")
+        ])
 
-        # ใช้ Streamlit Built-in Bar Chart
-        st.bar_chart(
-            comparison_df,
-            color=["#E05252", "#2878D0"],  # สีแดงสำหรับ f และสีฟ้าสำหรับ t
-            height=500,
-            stack=True
-        )
-
-        st.dataframe(comparison_df.reset_index(), use_container_width=True, hide_index=True)
+        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
 
         # ==================================================
         # 7. INDIVIDUAL DETAILS
