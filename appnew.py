@@ -176,7 +176,7 @@ if uploaded_files:
         progress.progress((index + 1) / len(files))
 
     # ==================================================
-    # 5. SUMMARY & BAR CHART
+    # 5. SUMMARY & SINGLE COMBINED BAR CHART
     # ==================================================
 
     if all_results:
@@ -193,43 +193,28 @@ if uploaded_files:
         c4.metric("รวมรายการ", f"{total_t + total_f:,}")
 
         # ==================================================
-        # 6. STACKED BAR CHART (พร้อมฟีเจอร์กดดาวน์โหลดรูปภาพ)
+        # 6. SINGLE BAR CHART (รวมทุกไฟล์เป็นแท่งเดียว)
         # ==================================================
 
         st.divider()
-        st.header("📈 กราฟเปรียบเทียบทุกไฟล์ Excel (1 ไฟล์ = 1 แท่ง)")
-        st.caption("💡 สามารถกดปุ่มจุด 3 จุด (⋮) หรือไอคอนกล้อง/ดาวน์โหลดที่มุมขวาบนของกราฟเพื่อเซฟเป็นไฟล์รูปภาพได้ทันที")
+        st.header("📈 กราฟรวมผลการตรวจสอบ (รวมทุกไฟล์เป็น 1 แท่ง)")
 
-        def shorten_name(name, max_len=16):
-            clean = name.replace(".xlsx", "")
-            return clean if len(clean) <= max_len else clean[:max_len-3] + "..."
-
-        comparison_df = pd.DataFrame([
+        # สร้าง DataFrame แท่งเดี่ยว รวมค่า f และ t ทั้งหมดเข้าด้วยกัน
+        total_chart_df = pd.DataFrame([
             {
-                "Excel File": shorten_name(r["filename"]),
-                "f - Incorrect": r["f"],
-                "t - Correct": r["t"]
+                "Category": "Total Results",
+                "f - Incorrect": total_f,
+                "t - Correct": total_t
             }
-            for r in all_results
-        ]).set_index("Excel File")
+        ]).set_index("Category")
 
-        # บล็อกแสดงกราฟแท่งแบบ Stacked พร้อมปุ่มเมนูดาวน์โหลดรูปอัตโนมัติ
+        # แสดงแท่งกราฟเดี่ยวซ้อนกัน (f อยู่บน / t อยู่ล่าง)
         st.bar_chart(
-            comparison_df,
+            total_chart_df,
             color=["#E05252", "#2878D0"],
             height=450,
             stack=True
         )
-
-        full_table_df = pd.DataFrame([
-            {
-                "Excel File": r["filename"],
-                "f - Incorrect": r["f"],
-                "t - Correct": r["t"]
-            }
-            for r in all_results
-        ])
-        st.dataframe(full_table_df, use_container_width=True, hide_index=True)
 
         # ==================================================
         # 7. INDIVIDUAL DETAILS
