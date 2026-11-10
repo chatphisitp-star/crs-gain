@@ -193,16 +193,22 @@ if uploaded_files:
         c4.metric("รวมรายการ", f"{total_t + total_f:,}")
 
         # ==================================================
-        # 6. SINGLE BAR CHART (รวมทุกไฟล์เป็นแท่งเดียว)
+        # 6. SINGLE BAR CHART (สามารถแก้ไขชื่อแกน X ได้)
         # ==================================================
 
         st.divider()
         st.header("📈 กราฟรวมผลการตรวจสอบ (รวมทุกไฟล์เป็น 1 แท่ง)")
 
-        # สร้าง DataFrame แท่งเดี่ยว รวมค่า f และ t ทั้งหมดเข้าด้วยกัน
+        # ช่องกรอกแก้ไขชื่อแกน X ได้ตลอดเวลา
+        custom_label = st.text_input("🏷️ ระบุชื่อหมวดหมู่บนแกน X:", value="WEEK")
+
+        # ป้องกันกรณีช่องกรอกถูกลบเป็นค่าว่าง
+        x_label = custom_label.strip() if custom_label.strip() else "WEEK"
+
+        # สร้าง DataFrame โดยใช้ชื่อแกน X ตามที่พิมพ์กรอกไว้
         total_chart_df = pd.DataFrame([
             {
-                "Category": "WEEK",
+                "Category": x_label,
                 "f - Incorrect": total_f,
                 "t - Correct": total_t
             }
