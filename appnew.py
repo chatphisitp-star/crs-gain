@@ -4,31 +4,34 @@ import pandas as pd
 import io
 import plotly.graph_objects as go
 
+# ==================================================
+# 1. PAGE CONFIG
+# ==================================================
+
 st.set_page_config(
     page_title="CRS Gain Validator",
+    page_icon="📊",
     layout="wide"
 )
 
-st.title("📊 ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ")
+st.title("📊 CRS Gain Validator")
+st.subheader("ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ")
 
-st.markdown("""
-อัปโหลดไฟล์ Excel ได้สูงสุด 30 ไฟล์
-ระบบจะตรวจสอบ CRS Gain พร้อมสร้างกราฟเปรียบเทียบผลลัพธ์ t / f
-""")
+st.info("รองรับการอัปโหลดไฟล์ Excel สูงสุด 30 ไฟล์ในครั้งเดียว")
 
-# --------------------------------------------------
-# 1. Upload Excel สูงสุด 30 ไฟล์
-# --------------------------------------------------
+# ==================================================
+# 2. UPLOAD FILES
+# ==================================================
 
 uploaded_files = st.file_uploader(
-    "📂 ลากไฟล์ Excel (.xlsx) มาวางที่นี่ (สูงสุด 30 ไฟล์)",
+    "📂 ลากไฟล์ Excel (.xlsx) มาวางที่นี่",
     type=["xlsx"],
     accept_multiple_files=True
 )
 
-# --------------------------------------------------
-# 2. Validation Functions (คงหลักการเดิม)
-# --------------------------------------------------
+# ==================================================
+# 3. VALIDATION RULES
+# ==================================================
 
 VALID_PAIRS = {
     300: 1,
@@ -41,12 +44,14 @@ VALID_PAIRS = {
 
 
 def validate_row(crs, pdsch):
+
     if pd.isna(crs) or pd.isna(pdsch):
         return ""
 
     try:
         crs_int = int(float(str(crs).strip()))
         pdsch_int = int(float(str(pdsch).strip()))
+
     except (ValueError, TypeError):
         return ""
 
@@ -59,6 +64,7 @@ def validate_row(crs, pdsch):
 
 
 def fix_pdsch_val(crs, pdsch):
+
     if pd.isna(crs):
         return pdsch
 
@@ -74,15 +80,15 @@ def fix_pdsch_val(crs, pdsch):
     return pdsch
 
 
-# --------------------------------------------------
-# 3. Excel Processing Function
-# --------------------------------------------------
+# ==================================================
+# 4. PROCESS EXCEL
+# ==================================================
 
 def process_excel(uploaded_file):
 
     file_bytes = uploaded_file.getvalue()
 
-    # อ่านข้อมูลทั้งหมดโดยไม่กำหนด Header
+    # อ่านข้อมูลทั้งหมด ไม่ตัด Header
     df_full = pd.read_excel(
         io.BytesIO(file_bytes),
         header=None
@@ -101,10 +107,10 @@ def process_excel(uploaded_file):
 
         clean_name = str(col).strip().lower()
 
-        if clean_name == 'crsgain':
+        if clean_name == "crsgain":
             crs_col_idx = idx
 
-        elif clean_name == 'pdschtypebgain':
+        elif clean_name == "pdschtypebgain":
             pdsch_col_idx = idx
 
     if crs_col_idx is None or pdsch_col_idx is None:
@@ -128,15 +134,15 @@ def process_excel(uploaded_file):
         for c, p in zip(crs_series, pdsch_series)
     ]
 
-    # นับจำนวน t / f
-    t_count = results.count('t')
-    f_count = results.count('f')
+    # นับผลลัพธ์
+    t_count = results.count("t")
+    f_count = results.count("f")
 
     # สร้างไฟล์ Checked
     df_checked = df_full.copy()
 
-    result_column = [''] * len(df_checked)
-    result_column[3] = 'result'
+    result_column = [""] * len(df_checked)
+    result_column[3] = "result"
 
     for i, res in enumerate(results):
         result_column[4 + i] = res
@@ -154,53 +160,55 @@ def process_excel(uploaded_file):
         "checked": df_checked,
         "fixed": df_fixed,
         "t": t_count,
-        "f": f_count,
-        "errors": f_count
+        "f": f_count
     }
 
 
-# --------------------------------------------------
-# 4. Process Multiple Files
-# --------------------------------------------------
+# ==================================================
+# 5. PROCESS MULTIPLE FILES
+# ==================================================
 
 if uploaded_files:
 
     if len(uploaded_files) > 30:
-        st.warning("⚠️ รองรับสูงสุด 30 ไฟล์ ระบบจะประมวลผล 30 ไฟล์แรก")
+        st.warning("รองรับสูงสุด 30 ไฟล์ จะประมวลผล 30 ไฟล์แรก")
 
-    uploaded_files = uploaded_files[:30]
+    files_to_process = uploaded_files[:30]
 
     all_results = []
-    comparison_data = []
 
     st.divider()
-    st.header("📋 ผลการตรวจสอบแต่ละไฟล์")
+    st.header("📋 กำลังประมวลผลไฟล์ Excel")
 
     progress = st.progress(0)
 
-    for index, uploaded_file in enumerate(uploaded_files):
+    for index, uploaded_file in enumerate(files_to_process):
 
         try:
+
             result = process_excel(uploaded_file)
 
             all_results.append(result)
 
-            comparison_data.append({
-                "File": uploaded_file.name,
-                "t": result["t"],
-                "f": result["f"]
-            })
+            st.success(
+                f"✅ {uploaded_file.name} "
+                f"| t: {result['t']:,} "
+                f"| f: {result['f']:,}"
+            )
 
         except Exception as e:
+
             st.error(
                 f"❌ {uploaded_file.name}: {str(e)}"
             )
 
-        progress.progress((index + 1) / len(uploaded_files))
+        progress.progress(
+            (index + 1) / len(files_to_process)
+        )
 
-    # --------------------------------------------------
-    # 5. Overall Summary
-    # --------------------------------------------------
+    # ==================================================
+    # 6. SUMMARY
+    # ==================================================
 
     if all_results:
 
@@ -208,26 +216,45 @@ if uploaded_files:
         total_f = sum(r["f"] for r in all_results)
 
         st.divider()
-        st.header("📊 ภาพรวมผลการตรวจสอบทั้งหมด")
+        st.header("📊 ภาพรวมผลการตรวจสอบ")
 
-        c1, c2, c3, c4 = st.columns(4)
+        col1, col2, col3, col4 = st.columns(4)
 
-        c1.metric("จำนวนไฟล์", len(all_results))
-        c2.metric("จำนวน t ถูกต้อง", f"{total_t:,}")
-        c3.metric("จำนวน f ผิดพลาด", f"{total_f:,}")
-        c4.metric(
-            "รวมข้อมูลที่ตรวจสอบ",
+        col1.metric(
+            "จำนวนไฟล์",
+            f"{len(all_results)}"
+        )
+
+        col2.metric(
+            "t - ถูกต้อง",
+            f"{total_t:,}"
+        )
+
+        col3.metric(
+            "f - ผิดพลาด",
+            f"{total_f:,}"
+        )
+
+        col4.metric(
+            "รวมรายการ",
             f"{total_t + total_f:,}"
         )
 
-        # --------------------------------------------------
-        # 6. Comparison Chart ทุกไฟล์
-        # --------------------------------------------------
+        # ==================================================
+        # 7. COMPARISON CHART
+        # ==================================================
 
         st.divider()
         st.header("📈 กราฟเปรียบเทียบทุกไฟล์ Excel")
 
-        comparison_df = pd.DataFrame(comparison_data)
+        comparison_df = pd.DataFrame([
+            {
+                "File": r["filename"],
+                "t": r["t"],
+                "f": r["f"]
+            }
+            for r in all_results
+        ])
 
         fig_compare = go.Figure()
 
@@ -236,7 +263,9 @@ if uploaded_files:
                 name="t - Correct",
                 x=comparison_df["File"],
                 y=comparison_df["t"],
-                marker_color="#2878D0"
+                marker_color="#2878D0",
+                text=comparison_df["t"],
+                textposition="auto"
             )
         )
 
@@ -245,19 +274,21 @@ if uploaded_files:
                 name="f - Incorrect",
                 x=comparison_df["File"],
                 y=comparison_df["f"],
-                marker_color="#E05252"
+                marker_color="#E05252",
+                text=comparison_df["f"],
+                textposition="auto"
             )
         )
 
         fig_compare.update_layout(
-            title="CRS Gain Validation Comparison",
+            title="CRS Gain Comparison - All Excel Files",
             xaxis_title="Excel File",
             yaxis_title="Number of Records",
             barmode="group",
-            height=500,
+            height=550,
             xaxis_tickangle=-45,
-            legend_title="Validation Result",
-            template="plotly_white"
+            template="plotly_white",
+            legend_title="Result"
         )
 
         st.plotly_chart(
@@ -265,9 +296,9 @@ if uploaded_files:
             use_container_width=True
         )
 
-        # --------------------------------------------------
-        # 7. Individual Chart Each File
-        # --------------------------------------------------
+        # ==================================================
+        # 8. INDIVIDUAL CHART
+        # ==================================================
 
         st.divider()
         st.header("📊 กราฟแสดงผลแยกตามไฟล์ Excel")
@@ -275,17 +306,28 @@ if uploaded_files:
         for index, result in enumerate(all_results):
 
             with st.expander(
-                f"📁 {result['filename']} | "
-                f"t = {result['t']:,} | "
-                f"f = {result['f']:,}",
+                f"📁 {result['filename']} "
+                f"| t = {result['t']:,} "
+                f"| f = {result['f']:,}",
                 expanded=True
             ):
 
                 col1, col2, col3 = st.columns(3)
 
-                col1.metric("t - ถูกต้อง", result["t"])
-                col2.metric("f - ผิดพลาด", result["f"])
-                col3.metric("รวม", result["t"] + result["f"])
+                col1.metric(
+                    "t - ถูกต้อง",
+                    f"{result['t']:,}"
+                )
+
+                col2.metric(
+                    "f - ผิดพลาด",
+                    f"{result['f']:,}"
+                )
+
+                col3.metric(
+                    "รวมรายการ",
+                    f"{result['t'] + result['f']:,}"
+                )
 
                 fig = go.Figure()
 
@@ -293,8 +335,14 @@ if uploaded_files:
                     go.Bar(
                         x=["t", "f"],
                         y=[result["t"], result["f"]],
-                        marker_color=["#2878D0", "#E05252"],
-                        text=[result["t"], result["f"]],
+                        marker_color=[
+                            "#2878D0",
+                            "#E05252"
+                        ],
+                        text=[
+                            result["t"],
+                            result["f"]
+                        ],
                         textposition="auto"
                     )
                 )
@@ -314,24 +362,25 @@ if uploaded_files:
                     key=f"chart_{index}"
                 )
 
-                # Preview Checked
-                st.caption("ตัวอย่างข้อมูลที่ตรวจสอบแล้ว")
+                st.caption("ตัวอย่างข้อมูล Checked")
 
                 st.dataframe(
                     result["checked"].head(15),
                     use_container_width=True
                 )
 
-        # --------------------------------------------------
-        # 8. Download Excel Files
-        # --------------------------------------------------
+        # ==================================================
+        # 9. DOWNLOAD EXCEL
+        # ==================================================
 
         st.divider()
         st.header("📥 ดาวน์โหลดไฟล์ Excel")
 
         for index, result in enumerate(all_results):
 
-            st.markdown(f"**📁 {result['filename']}**")
+            st.markdown(
+                f"**📁 {result['filename']}**"
+            )
 
             col1, col2 = st.columns(2)
 
@@ -379,4 +428,12 @@ if uploaded_files:
                 key=f"fixed_{index}"
             )
 
-        st.success("✅ ประมวลผลไฟล์ทั้งหมดเรียบร้อยแล้ว!")
+        st.divider()
+
+        st.success(
+            "🎉 ประมวลผลไฟล์ Excel ทั้งหมดเรียบร้อยแล้ว!"
+        )
+
+    else:
+
+        st.error("ไม่สามารถประมวลผลไฟล์ Excel ได้")
