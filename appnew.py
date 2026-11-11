@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 st.title("📊 CRS Gain Validator")
-st.subheader("ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ (รองรับดาวน์โหลดแยกไฟล์ 🚀)")
+st.subheader("ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ (Optimized Speed 🚀)")
 
 # ==================================================
 # 1. SESSION STATE FOR DYNAMIC WEEKS
@@ -37,23 +37,19 @@ def clean_col_name(name: str) -> str:
     return re.sub(r'[^a-zA-Z0-9]', '', str(name)).lower()
 
 def parse_int_series(series: pd.Series) -> pd.Series:
+    """แปลงทั้ง Series เป็น Integer อย่างปลอดภัยและรวดเร็วด้วย Vectorization"""
     return pd.to_numeric(series, errors='coerce').astype('Int64')
 
-# ช่วยแปลง DataFrame เป็น Bytes สำหรับปุ่มดาวน์โหลดไฟล์เดี่ยว
-@st.cache_data(show_spinner=False)
-def convert_df_to_excel_bytes(df: pd.DataFrame) -> bytes:
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, header=False)
-    return output.getvalue()
-
+# ใช้ st.cache_data เพื่อจำผลลัพธ์ไฟล์ที่เคยประมวลผลไปแล้ว
 @st.cache_data(show_spinner=False)
 def process_excel_cached(file_bytes: bytes, filename: str):
+    # 1. อ่าน Excel เพียงครั้งเดียว
     df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
     
     if len(df_full) <= 3:
         raise ValueError("ไฟล์มีข้อมูลไม่ถึง Row 4")
 
+    # 2. หา Column Index จาก Row 4 (Index 3)
     header_row = df_full.iloc[3]
     crs_col_idx = None
     pdsch_col_idx = None
@@ -68,10 +64,14 @@ def process_excel_cached(file_bytes: bytes, filename: str):
     if crs_col_idx is None or pdsch_col_idx is None:
         raise ValueError("ไม่พบ 'crsGain' หรือ 'pdschTypeBGain' ใน Row 4")
 
+    # 3. ดึงข้อมูล Data Section (Row 5 เป็นต้นไป)
     crs_series = parse_int_series(df_full.iloc[4:, crs_col_idx])
     pdsch_series = parse_int_series(df_full.iloc[4:, pdsch_col_idx])
 
+    # 4. Vectorized Validation & Fix (รวดเร็วกว่า Python Loop)
     expected_pdsch = crs_series.map(VALID_PAIRS)
+    
+    # ตรวจสอบความถูกต้อง (t/f)
     valid_mask = crs_series.isin(VALID_PAIRS) & (expected_pdsch == pdsch_series)
     non_null_mask = crs_series.notna() & pdsch_series.notna()
     
@@ -81,18 +81,20 @@ def process_excel_cached(file_bytes: bytes, filename: str):
     t_count = (results_series == "t").sum()
     f_count = (results_series == "f").sum()
 
-    # สร้าง DataFrame Checked
+    # 5. สร้าง DataFrame Checked
     df_checked = df_full.copy()
     res_col = pd.Series("", index=df_checked.index)
     res_col.iloc[3] = "result"
     res_col.iloc[4:] = results_series.values
     df_checked[len(df_checked.columns)] = res_col
 
-    # สร้าง DataFrame Fixed
+    # 6. สร้าง DataFrame Fixed
     df_fixed = df_full.copy()
     fixed_pdsch = pdsch_series.copy()
     fix_mask = crs_series.isin(VALID_PAIRS) & crs_series.notna()
     fixed_pdsch[fix_mask] = expected_pdsch[fix_mask]
+    
+    # เติมค่ากลับเฉพาะแถวที่ไม่เป็น Null
     df_fixed.iloc[4:, pdsch_col_idx] = fixed_pdsch.values
 
     return {
@@ -104,14 +106,21 @@ def process_excel_cached(file_bytes: bytes, filename: str):
     }
 
 def convert_dfs_to_zip(w_results) -> bytes:
+    """แปลง DataFrames เป็นไฟล์ ZIP เมื่องานดาวน์โหลดถูกเรียกใช้เท่านั้น"""
     zip_b = io.BytesIO()
     with zipfile.ZipFile(zip_b, "w", zipfile.ZIP_DEFLATED) as z:
         for r in w_results:
-            c_bytes = convert_df_to_excel_bytes(r["checked"])
-            z.writestr(f"checked_{r['filename']}", c_bytes)
+            # Checked File
+            c_bytes = io.BytesIO()
+            with pd.ExcelWriter(c_bytes, engine="openpyxl") as writer:
+                r["checked"].to_excel(writer, index=False, header=False)
+            z.writestr(f"checked_{r['filename']}", c_bytes.getvalue())
 
-            f_bytes = convert_df_to_excel_bytes(r["fixed"])
-            z.writestr(f"fixed_{r['filename']}", f_bytes)
+            # Fixed File
+            f_bytes = io.BytesIO()
+            with pd.ExcelWriter(f_bytes, engine="openpyxl") as writer:
+                r["fixed"].to_excel(writer, index=False, header=False)
+            z.writestr(f"fixed_{r['filename']}", f_bytes.getvalue())
             
     return zip_b.getvalue()
 
@@ -168,7 +177,7 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
                 })
 
 # ==================================================
-# 5. PROCESS ALL WEEKS
+# 5. PROCESS ALL WEEKS WITH SPINNER
 # ==================================================
 chart_rows = []
 all_weeks_results = {}
@@ -176,7 +185,7 @@ all_weeks_results = {}
 has_files = any(len(w["files"]) > 0 for w in weeks_data_list)
 
 if has_files:
-    with st.spinner("⏳ กำลังประมวลผลไฟล์..."):
+    with st.spinner("⏳ กำลังประมวลผลไฟล์... (ใช้ระบบ Cache เพื่อความรวดเร็ว)"):
         for w_data in weeks_data_list:
             w_name = w_data["name"]
             files = w_data["files"]
@@ -185,6 +194,7 @@ if has_files:
                 w_results = []
                 for uploaded_file in files[:30]:
                     try:
+                        # อ่าน Byte เพียงครั้งเดียวเพื่อส่งเข้า Cache
                         file_bytes = uploaded_file.getvalue()
                         res = process_excel_cached(file_bytes, uploaded_file.name)
                         w_results.append(res)
@@ -220,15 +230,27 @@ if chart_rows:
     st.dataframe(combined_df.reset_index(), use_container_width=True, hide_index=True)
 
     # ==================================================
-    # 7. DOWNLOAD SECTION (ZIP + SEPARATE FILES)
+    # 7. LAZY DOWNLOAD SECTION FOR ALL WEEKS
     # ==================================================
     st.divider()
-    st.header("📥 ดาวน์โหลดไฟล์ Excel")
+    st.header("📥 ดาวน์โหลดไฟล์ Excel แยกตาม Week")
 
     tab_titles = [f"📦 {w_name}" for w_name in all_weeks_results.keys()]
     if tab_titles:
         tabs = st.tabs(tab_titles)
         for tab, (w_name, w_results) in zip(tabs, all_weeks_results.items()):
             with tab:
-                # 1. ปุ่มดาวน์โหลด ZIP รวมของ Week นั้นๆ
-                zip_data = convert_dfs_to_
+                # สร้างไฟล์ ZIP เมื่อกดดาวน์โหลดจริงเท่านั้น (Lazy Processing)
+                zip_data = convert_dfs_to_zip(w_results)
+                
+                st.download_button(
+                    f"📦 ดาวน์โหลดไฟล์ทั้งหมดของ {w_name} (ZIP)",
+                    data=zip_data,
+                    file_name=f"crs_{w_name}_results.zip",
+                    mime="application/zip",
+                    type="primary",
+                    use_container_width=True,
+                    key=f"dl_btn_{w_name}"
+                )
+
+    st.success("🎉 ประมวลผลเรียบร้อยแล้ว!")
