@@ -292,7 +292,7 @@ if chart_rows:
                 "Week:N", 
                 title=chart_x_axis_title, # กำหนดชื่อแกน X (ดึงจาก Sidebar)
                 axis=alt.Axis(
-                    labelAngle=-45,       # เอียงชื่อ Week 45 องศาเพื่ออ่านง่าย ไม่เบียดกัน
+                    labelAngle=90,       # เอียงชื่อ Week 45 องศาเพื่ออ่านง่าย ไม่เบียดกัน
                     labelFontSize=12,
                     titleFontSize=14,
                     titlePadding=10
