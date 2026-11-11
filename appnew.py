@@ -49,6 +49,14 @@ st.subheader(app_subtitle)
 if "num_weeks" not in st.session_state:
     st.session_state.num_weeks = 2
 
+# Helper Functions สำหรับจัดการปุ่มเพิ่ม/ลด ให้ตอบสนองทันที
+def update_weeks(delta: int):
+    new_val = st.session_state.num_weeks + delta
+    st.session_state.num_weeks = max(1, min(50, new_val))
+
+def set_weeks_direct():
+    st.session_state.num_weeks = st.session_state.direct_num_input
+
 # ==================================================
 # 3. FAST VECTORIZED VALIDATION ENGINE
 # ==================================================
@@ -70,7 +78,7 @@ def clean_col_name(name: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def process_excel_fast(file_bytes: bytes, filename: str):
-    """ประมวลผลข้อมูลใน Memory ด้วย Pandas Vectorization (ไม่ทำ I/O หรือ Excel Formatting)"""
+    """ประมวลผลข้อมูลใน Memory ด้วย Pandas Vectorization"""
     df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
     
     if len(df_full) <= 3:
@@ -159,48 +167,34 @@ def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_i
     return output.getvalue()
 
 # ==================================================
-# 4. CONTROLS FOR ADDING/REMOVING WEEKS
+# 4. CONTROLS FOR ADDING/REMOVING WEEKS (REAL-TIME UPDATES)
 # ==================================================
 st.markdown(f"### {section_manage_title}")
 
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 
 with c1:
-    if st.button("➕ เพิ่ม 1", use_container_width=True):
-        st.session_state.num_weeks = min(50, st.session_state.num_weeks + 1)
-        st.rerun()
+    st.button("➕ เพิ่ม 1", use_container_width=True, on_click=update_weeks, args=(1,))
 with c2:
-    if st.button("➕ เพิ่ม 5", use_container_width=True):
-        st.session_state.num_weeks = min(50, st.session_state.num_weeks + 5)
-        st.rerun()
+    st.button("➕ เพิ่ม 5", use_container_width=True, on_click=update_weeks, args=(5,))
 with c3:
-    if st.button("➕ เพิ่ม 10", use_container_width=True):
-        st.session_state.num_weeks = min(50, st.session_state.num_weeks + 10)
-        st.rerun()
+    st.button("➕ เพิ่ม 10", use_container_width=True, on_click=update_weeks, args=(10,))
 with c4:
-    if st.button("➖ ลด 1", use_container_width=True):
-        st.session_state.num_weeks = max(1, st.session_state.num_weeks - 1)
-        st.rerun()
+    st.button("➖ ลด 1", use_container_width=True, on_click=update_weeks, args=(-1,))
 with c5:
-    if st.button("➖ ลด 5", use_container_width=True):
-        st.session_state.num_weeks = max(1, st.session_state.num_weeks - 5)
-        st.rerun()
+    st.button("➖ ลด 5", use_container_width=True, on_click=update_weeks, args=(-5,))
 with c6:
-    if st.button("➖ ลด 10", use_container_width=True):
-        st.session_state.num_weeks = max(1, st.session_state.num_weeks - 10)
-        st.rerun()
+    st.button("➖ ลด 10", use_container_width=True, on_click=update_weeks, args=(-10,))
 
-direct_num = st.number_input(
+# ช่องให้ระบุจำนวนชุดโดยตรง พร้อมซิงค์ Callback
+st.number_input(
     "หรือระบุจำนวนชุดอัปโหลดโดยตรง (1 - 50):", 
     min_value=1, 
     max_value=50, 
     value=st.session_state.num_weeks,
-    key="direct_num_input"
+    key="direct_num_input",
+    on_change=set_weeks_direct
 )
-
-if direct_num != st.session_state.num_weeks:
-    st.session_state.num_weeks = direct_num
-    st.rerun()
 
 st.caption(f"จำนวนชุดอัปโหลดปัจจุบัน: **{st.session_state.num_weeks}** ชุด")
 st.divider()
@@ -297,7 +291,6 @@ if chart_rows:
         tabs = st.tabs(tab_titles)
         for tab_idx, (tab, (w_name, w_results)) in enumerate(zip(tabs, all_weeks_results.items())):
             with tab:
-                # 1. ดาวน์โหลด ZIP รวม
                 zip_b = io.BytesIO()
                 with zipfile.ZipFile(zip_b, "w", zipfile.ZIP_DEFLATED) as z:
                     for r in w_results:
@@ -325,7 +318,6 @@ if chart_rows:
                 st.markdown("---")
                 st.subheader(f"📄 รายการไฟล์และปุ่มดาวน์โหลดแยก ({len(w_results)} ไฟล์)")
 
-                # 2. ดาวน์โหลดแยกรายไฟล์
                 for file_idx, r in enumerate(w_results):
                     with st.expander(f"📄 {r['filename']} | ✅ Correct (t): {r['t']} | ❌ Incorrect (f): {r['f']}", expanded=False):
                         btn_col1, btn_col2 = st.columns(2)
