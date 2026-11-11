@@ -59,7 +59,7 @@ def set_weeks_direct():
     st.session_state.num_weeks = st.session_state.direct_num_input
 
 # ==================================================
-# 3. FAST VALIDATION ENGINE
+# 3. FAST VALIDATION ENGINE (DYNAMIC HEADER SEARCH)
 # ==================================================
 VALID_PAIRS = {
     300: 1,
@@ -81,25 +81,41 @@ def clean_col_name(name: str) -> str:
 def process_excel_fast(file_bytes: bytes, filename: str):
     df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
     
-    if len(df_full) <= 3:
-        raise ValueError("ไฟล์มีข้อมูลไม่ถึง Row 4")
+    if len(df_full) == 0:
+        raise ValueError("ไฟล์ไม่มีข้อมูล")
 
-    header_row = df_full.iloc[3]
+    header_row_idx = None
     crs_col_idx = None
     pdsch_col_idx = None
 
-    for idx, col in enumerate(header_row):
-        clean_name = clean_col_name(col)
-        if clean_name == "crsgain":
-            crs_col_idx = idx
-        elif clean_name == "pdschtypebgain":
-            pdsch_col_idx = idx
+    # วนลูปสแกนหาแถวที่มีทั้ง crsGain และ pdschTypeBGain (สแกนแถวไหนก็ได้)
+    for r_idx in range(len(df_full)):
+        row_values = df_full.iloc[r_idx]
+        found_crs = None
+        found_pdsch = None
+        
+        for c_idx, val in enumerate(row_values):
+            clean_name = clean_col_name(val)
+            if clean_name == "crsgain":
+                found_crs = c_idx
+            elif clean_name == "pdschtypebgain":
+                found_pdsch = c_idx
+        
+        # เมื่อพบทั้งสองคอลัมน์ในแถวเดียวกัน บันทึกตำแหน่งแถวและคอลัมน์ไว้ทันที
+        if found_crs is not None and found_pdsch is not None:
+            header_row_idx = r_idx
+            crs_col_idx = found_crs
+            pdsch_col_idx = found_pdsch
+            break
 
-    if crs_col_idx is None or pdsch_col_idx is None:
-        raise ValueError("ไม่พบ 'crsGain' หรือ 'pdschTypeBGain' ใน Row 4")
+    if header_row_idx is None:
+        raise ValueError("ไม่พบหัวข้อ 'crsGain' และ 'pdschTypeBGain' ในไฟล์")
 
-    crs_series = pd.to_numeric(df_full.iloc[4:, crs_col_idx], errors='coerce')
-    pdsch_series = pd.to_numeric(df_full.iloc[4:, pdsch_col_idx], errors='coerce')
+    # จุดเริ่มต้นของข้อมูลคือแถวถัดจาก Header
+    data_start_idx = header_row_idx + 1
+
+    crs_series = pd.to_numeric(df_full.iloc[data_start_idx:, crs_col_idx], errors='coerce')
+    pdsch_series = pd.to_numeric(df_full.iloc[data_start_idx:, pdsch_col_idx], errors='coerce')
 
     expected_pdsch = crs_series.map(VALID_PAIRS_SERIES)
     valid_mask = crs_series.isin(VALID_PAIRS_SERIES.index) & (expected_pdsch == pdsch_series)
@@ -111,18 +127,20 @@ def process_excel_fast(file_bytes: bytes, filename: str):
     t_count = int((results_series == "t").sum())
     f_count = int((results_series == "f").sum())
 
+    # สร้าง Checked DF
     df_checked = df_full.copy()
     res_col = pd.Series("", index=df_checked.index)
-    res_col.iloc[3] = "result"
-    res_col.iloc[4:] = results_series.values
+    res_col.iloc[header_row_idx] = "result"
+    res_col.iloc[data_start_idx:] = results_series.values
     df_checked[len(df_checked.columns)] = res_col
 
+    # สร้าง Fixed DF
     df_fixed = df_full.copy()
     fixed_pdsch = pdsch_series.copy()
     fix_mask = crs_series.isin(VALID_PAIRS_SERIES.index) & crs_series.notna()
     fixed_pdsch[fix_mask] = expected_pdsch[fix_mask]
     
-    df_fixed.iloc[4:, pdsch_col_idx] = fixed_pdsch.values
+    df_fixed.iloc[data_start_idx:, pdsch_col_idx] = fixed_pdsch.values
     df_fixed[len(df_fixed.columns)] = res_col
 
     return {
@@ -130,11 +148,12 @@ def process_excel_fast(file_bytes: bytes, filename: str):
         "checked_df": df_checked,
         "fixed_df": df_fixed,
         "pdsch_col_idx": pdsch_col_idx,
+        "header_row_idx": header_row_idx,
         "t": t_count,
         "f": f_count
     }
 
-def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_idx=None, fail_color="#FFC7CE", fix_color="#C6EFCE") -> bytes:
+def df_to_excel_bytes_styled(df: pd.DataFrame, header_row_idx: int = 3, highlight_type=None, target_col_idx=None, fail_color="#FFC7CE", fix_color="#C6EFCE") -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, header=False)
@@ -148,12 +167,13 @@ def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_i
             fill_fix = PatternFill(start_color=hex_fix, end_color=hex_fix, fill_type="solid")
 
             last_col_idx = df.shape[1]
-            res_series = df.iloc[4:, last_col_idx - 1]
+            data_start_idx = header_row_idx + 1
+            res_series = df.iloc[data_start_idx:, last_col_idx - 1]
             fail_rows = res_series[res_series == "f"].index
 
             if highlight_type == "checked":
                 for r_idx in fail_rows:
-                    row_num = r_idx + 1
+                    row_num = r_idx + 1  # openpyxl 1-based index
                     for col in range(1, last_col_idx + 1):
                         worksheet.cell(row=row_num, column=col).fill = fill_fail
 
@@ -282,106 +302,8 @@ if chart_rows:
         value_name="Count"
     )
 
-    # สร้างกราฟพร้อมกำหนด Title ลงในพร็อพเพอร์ตี้ของตัวกราฟโดยตรง และเอียงแกน X -90 องศา
     chart = (
         alt.Chart(df_melted)
         .mark_bar()
         .encode(
             x=alt.X("Week:N", title=None, axis=alt.Axis(labelAngle=-90)),
-            y=alt.Y("Count:Q", title="Count"),
-            color=alt.Color(
-                "Status:N",
-                scale=alt.Scale(
-                    domain=["f - Incorrect", "t - Correct"],
-                    range=[color_incorrect_chart, color_correct_chart]
-                ),
-                legend=alt.Legend(orient="bottom", title=None)
-            ),
-            tooltip=["Week", "Status", "Count"]
-        )
-        .properties(
-            title=alt.TitleParams(
-                text=section_chart_title,
-                fontSize=20,
-                anchor="start",
-                offset=15
-            ),
-            height=500
-        )
-    )
-
-    st.altair_chart(chart, use_container_width=True)
-    st.dataframe(combined_df, use_container_width=True, hide_index=True)
-
-    # ==================================================
-    # 8. DOWNLOAD SECTION
-    # ==================================================
-    st.divider()
-    st.header(section_download_title)
-
-    tab_titles = [f"📦 {w_name}" for w_name in all_weeks_results.keys()]
-    if tab_titles:
-        tabs = st.tabs(tab_titles)
-        for tab_idx, (tab, (w_name, w_results)) in enumerate(zip(tabs, all_weeks_results.items())):
-            with tab:
-                zip_b = io.BytesIO()
-                with zipfile.ZipFile(zip_b, "w", zipfile.ZIP_DEFLATED) as z:
-                    for r in w_results:
-                        chk_b = df_to_excel_bytes_styled(
-                            r["checked_df"], highlight_type="checked", 
-                            fail_color=color_fail_excel, fix_color=color_fix_excel
-                        )
-                        fix_b = df_to_excel_bytes_styled(
-                            r["fixed_df"], highlight_type="fixed", target_col_idx=r["pdsch_col_idx"],
-                            fail_color=color_fail_excel, fix_color=color_fix_excel
-                        )
-                        z.writestr(f"{prefix_checked}{r['filename']}", chk_b)
-                        z.writestr(f"{prefix_fixed}{r['filename']}", fix_b)
-
-                st.download_button(
-                    f"📦 ดาวน์โหลดไฟล์ทั้งหมดของ {w_name} (ZIP รวม)",
-                    data=zip_b.getvalue(),
-                    file_name=f"crs_{w_name}_results.zip",
-                    mime="application/zip",
-                    type="primary",
-                    use_container_width=True,
-                    key=f"dl_zip_{w_name}_{tab_idx}"
-                )
-
-                st.markdown("---")
-                st.subheader(f"📄 รายการไฟล์และปุ่มดาวน์โหลดแยก ({len(w_results)} ไฟล์)")
-
-                for file_idx, r in enumerate(w_results):
-                    with st.expander(f"📄 {r['filename']} | ✅ Correct (t): {r['t']} | ❌ Incorrect (f): {r['f']}", expanded=False):
-                        btn_col1, btn_col2 = st.columns(2)
-                        
-                        chk_bytes = df_to_excel_bytes_styled(
-                            r["checked_df"], highlight_type="checked", 
-                            fail_color=color_fail_excel, fix_color=color_fix_excel
-                        )
-                        fix_bytes = df_to_excel_bytes_styled(
-                            r["fixed_df"], highlight_type="fixed", target_col_idx=r["pdsch_col_idx"],
-                            fail_color=color_fail_excel, fix_color=color_fix_excel
-                        )
-
-                        with btn_col1:
-                            st.download_button(
-                                label=f"⬇️ โหลด Checked ({r['filename']})",
-                                data=chk_bytes,
-                                file_name=f"{prefix_checked}{r['filename']}",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                use_container_width=True,
-                                key=f"btn_chk_{tab_idx}_{file_idx}_{r['filename']}"
-                            )
-
-                        with btn_col2:
-                            st.download_button(
-                                label=f"⬇️ โหลด Fixed ({r['filename']})",
-                                data=fix_bytes,
-                                file_name=f"{prefix_fixed}{r['filename']}",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                use_container_width=True,
-                                key=f"btn_fix_{tab_idx}_{file_idx}_{r['filename']}"
-                            )
-
-    st.success("🎉 ประมวลผลเรียบร้อยแล้ว!")
