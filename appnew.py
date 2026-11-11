@@ -19,15 +19,15 @@ st.sidebar.header("⚙️ การตั้งค่าระบบ")
 
 # กำหนดค่าเริ่มต้นให้ Session State หากเพิ่งเปิดใช้งานครั้งแรก
 if "app_title" not in st.session_state:
-    st.session_state.app_title = "⚡ CRS Gain Validator (Ultra Fast)"
+    st.session_state.app_title = "CRS Gain Validator "
 if "app_subtitle" not in st.session_state:
     st.session_state.app_subtitle = "ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
 if "section_manage_title" not in st.session_state:
     st.session_state.section_manage_title = "🛠️ จัดการชุดไฟล์ (Week)"
 if "section_chart_title" not in st.session_state:
-    st.session_state.section_chart_title = "📈 กราฟเปรียบเทียบผลรวมทุก Week"
+    st.session_state.section_chart_title = "CRS Gain, pdschTypeBGain"
 if "section_download_title" not in st.session_state:
-    st.session_state.section_download_title = "📥 ดาวน์โหลดไฟล์ Excel"
+    st.session_state.section_download_title = "ดาวน์โหลดไฟล์ Excel"
 
 with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
     app_title = st.text_input("หัวข้อหลัก (Title):", key="app_title")
