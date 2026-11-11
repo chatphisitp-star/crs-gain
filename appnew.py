@@ -1,5 +1,6 @@
 import io
 import re
+import json
 import zipfile
 import pandas as pd
 import streamlit as st
@@ -13,11 +14,11 @@ st.set_page_config(
 )
 
 # ==================================================
-# 1. SIDEBAR CONFIGURATION (บันทึกค่าหัวข้ออัตโนมัติ)
+# 1. SIDEBAR CONFIGURATION (ระบบบันทึก & โหลดหัวข้อ)
 # ==================================================
 st.sidebar.header("⚙️ การตั้งค่าระบบ")
 
-# กำหนดค่าเริ่มต้นให้ Session State หากเพิ่งเปิดใช้งานครั้งแรก
+# 1.1 ค่าเริ่มต้นลง Session State
 if "app_title" not in st.session_state:
     st.session_state.app_title = "⚡ CRS Gain Validator (Ultra Fast)"
 if "app_subtitle" not in st.session_state:
@@ -29,12 +30,46 @@ if "section_chart_title" not in st.session_state:
 if "section_download_title" not in st.session_state:
     st.session_state.section_download_title = "📥 ดาวน์โหลดไฟล์ Excel"
 
+# 1.2 ส่วนปรับแต่งข้อความหัวข้อ + ปุ่ม Save/Load
 with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
-    app_title = st.text_input("หัวข้อหลัก (Title):", key="app_title")
-    app_subtitle = st.text_input("หัวข้อย่อย (Subheader):", key="app_subtitle")
-    section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", key="section_manage_title")
-    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", key="section_chart_title")
-    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", key="section_download_title")
+    st.text_input("หัวข้อหลัก (Title):", key="app_title")
+    st.text_input("หัวข้อย่อย (Subheader):", key="app_subtitle")
+    st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", key="section_manage_title")
+    st.text_input("หัวข้อส่วนแสดงกราฟ:", key="section_chart_title")
+    st.text_input("หัวข้อส่วนดาวน์โหลด:", key="section_download_title")
+
+    st.markdown("---")
+    st.caption("💾 **บันทึก & โหลดคืนค่าข้อความหัวข้อ**")
+
+    # ปุ่มบันทึกค่าหัวข้อปัจจุบัน ออกเป็นไฟล์ JSON (Save)
+    header_config_json = json.dumps({
+        "app_title": st.session_state.app_title,
+        "app_subtitle": st.session_state.app_subtitle,
+        "section_manage_title": st.session_state.section_manage_title,
+        "section_chart_title": st.session_state.section_chart_title,
+        "section_download_title": st.session_state.section_download_title
+    }, ensure_ascii=False, indent=2)
+
+    st.download_button(
+        label="💾 บันทึกหัวข้อเก็บไว้ (Save Header Config)",
+        data=header_config_json.encode('utf-8'),
+        file_name="header_config.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+    # ปุ่มอัปโหลดไฟล์ JSON เพื่อดึงค่าหัวข้อเดิมกลับมาใช้งาน (Load)
+    uploaded_config = st.file_uploader("📂 โหลดไฟล์หัวข้อที่เคยเซฟไว้:", type=["json"], key="config_uploader")
+    if uploaded_config is not None:
+        try:
+            loaded_data = json.load(uploaded_config)
+            for k, v in loaded_data.items():
+                if k in st.session_state:
+                    st.session_state[k] = v
+            st.success("✅ ดึงค่าหัวข้อสำเร็จ!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ ไฟล์ไม่ถูกต้อง: {str(e)}")
 
 with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
     prefix_checked = st.text_input("คำนำหน้าไฟล์ Checked:", value="checked_")
@@ -50,8 +85,8 @@ with st.sidebar.expander("🎨 ปรับแต่งสีระบบ", expa
     color_incorrect_chart = st.color_picker("สีกราฟ Incorrect (f)", "#E05252")
     color_correct_chart = st.color_picker("สีกราฟ Correct (t)", "#2878D0")
 
-st.title(app_title)
-st.subheader(app_subtitle)
+st.title(st.session_state.app_title)
+st.subheader(st.session_state.app_subtitle)
 
 # ==================================================
 # 2. STATE MANAGEMENT (บันทึกสถานะล่าสุดตลอด)
@@ -176,7 +211,7 @@ def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_i
 # ==================================================
 # 4. CONTROLS FOR ADDING/REMOVING WEEKS
 # ==================================================
-st.markdown(f"### {section_manage_title}")
+st.markdown(f"### {st.session_state.section_manage_title}")
 
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 
@@ -305,7 +340,7 @@ if chart_rows:
         )
         .properties(
             title=alt.TitleParams(
-                text=section_chart_title,
+                text=st.session_state.section_chart_title,
                 fontSize=20,
                 anchor="start",
                 offset=15
@@ -321,7 +356,7 @@ if chart_rows:
     # 8. DOWNLOAD SECTION
     # ==================================================
     st.divider()
-    st.header(section_download_title)
+    st.header(st.session_state.section_download_title)
 
     tab_titles = [f"📦 {w_name}" for w_name in all_weeks_results.keys()]
     if tab_titles:
