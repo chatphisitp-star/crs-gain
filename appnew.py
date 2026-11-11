@@ -25,6 +25,7 @@ with st.sidebar.expander("📝 ปรับแต่งข้อความห�
     )
     section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", value="🛠️ จัดการชุดไฟล์ (Week)")
     section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", value="📈 กราฟเปรียบเทียบผลรวมทุก Week")
+    chart_x_axis_title = st.text_input("ชื่อแกน X บนกราฟ:", value="Week")
     section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", value="📥 ดาวน์โหลดไฟล์ Excel")
 
 with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
@@ -267,14 +268,14 @@ if has_files:
                     })
 
 # ==================================================
-# 7. COMBINED CHART (ใช้อัลแตร์ Altair เพื่อดึง Header ลงรูปตอน Download)
+# 7. COMBINED CHART (แสดงชื่อ Week เป็นแกน X)
 # ==================================================
 if chart_rows:
     st.divider()
 
     combined_df = pd.DataFrame(chart_rows)
     
-    # แปลงข้อมูลเป็น Long Format สำหรับสร้าง Stacked Bar Chart
+    # แปลงข้อมูลเป็น Long Format สำหรับทำ Stacked Bar Chart
     df_melted = combined_df.melt(
         id_vars=["Week"], 
         value_vars=["f - Incorrect", "t - Correct"],
@@ -282,26 +283,39 @@ if chart_rows:
         value_name="Count"
     )
 
-    # สร้างกราฟพร้อมกำหนด Title ลงในพร็อพเพอร์ตี้ของตัวกราฟโดยตรง
+    # สร้างกราฟ Altair โดยตั้งค่าแกน X เป็นชื่อ Week
     chart = (
         alt.Chart(df_melted)
         .mark_bar()
         .encode(
-            x=alt.X("Week:N", title=None, axis=alt.Axis(labelAngle=0)),
-            y=alt.Y("Count:Q", title="Count"),
+            x=alt.X(
+                "Week:N", 
+                title=chart_x_axis_title, # กำหนดชื่อแกน X (ดึงจาก Sidebar)
+                axis=alt.Axis(
+                    labelAngle=-45,       # เอียงชื่อ Week 45 องศาเพื่ออ่านง่าย ไม่เบียดกัน
+                    labelFontSize=12,
+                    titleFontSize=14,
+                    titlePadding=10
+                )
+            ),
+            y=alt.Y("Count:Q", title="จำนวนทั้งหมด (Count)", axis=alt.Axis(titleFontSize=14)),
             color=alt.Color(
                 "Status:N",
                 scale=alt.Scale(
                     domain=["f - Incorrect", "t - Correct"],
                     range=[color_incorrect_chart, color_correct_chart]
                 ),
-                legend=alt.Legend(orient="bottom", title=None)
+                legend=alt.Legend(orient="bottom", title=None, labelFontSize=12)
             ),
-            tooltip=["Week", "Status", "Count"]
+            tooltip=[
+                alt.Tooltip("Week:N", title="Week"),
+                alt.Tooltip("Status:N", title="สถานะ"),
+                alt.Tooltip("Count:Q", title="จำนวน")
+            ]
         )
         .properties(
             title=alt.TitleParams(
-                text=section_chart_title,
+                text=section_chart_title, # ข้อความ Title ของกราฟ (ติดไปด้วยเวลา Download PNG)
                 fontSize=20,
                 anchor="start",
                 offset=15
