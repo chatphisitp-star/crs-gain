@@ -277,7 +277,7 @@ if chart_rows:
     
     # แปลงข้อมูลเป็น Long Format สำหรับทำ Stacked Bar Chart
     df_melted = combined_df.melt(
-        id_vars=["Week"], 
+   
         value_vars=["f - Incorrect", "t - Correct"],
         var_name="Status", 
         value_name="Count"
