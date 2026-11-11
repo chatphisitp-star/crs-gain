@@ -12,44 +12,28 @@ st.set_page_config(
 )
 
 # ==================================================
-# 1. SIDEBAR CONFIGURATION
-# ==================================================
-st.sidebar.header("⚙️ การตั้งค่าระบบ")
-
-with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
-    app_title = st.text_input("หัวข้อหลัก (Title):", value="⚡ CRS Gain Validator (Ultra Fast)")
-    app_subtitle = st.text_input(
-        "หัวข้อย่อย (Subheader):", 
-        value="ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
-    )
-    section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", value="🛠️ จัดการชุดไฟล์ (Week)")
-    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", value="📈 กราฟเปรียบเทียบผลรวมทุก Week")
-    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", value="📥 ดาวน์โหลดไฟล์ Excel")
-
-with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
-    prefix_checked = st.text_input("คำนำหน้าไฟล์ Checked:", value="checked_")
-    prefix_fixed = st.text_input("คำนำหน้าไฟล์ Fixed:", value="fixed_")
-
-with st.sidebar.expander("🎨 ปรับแต่งสีระบบ", expanded=True):
-    st.subheader("1. สีในไฟล์ Excel")
-    highlight_excel = st.checkbox("เปิดใช้งานไฮไลต์สีใน Excel", value=True)
-    color_fail_excel = st.color_picker("สีไฮไลต์ Error 'f' (Checked File)", "#FFC7CE")
-    color_fix_excel = st.color_picker("สีไฮไลต์จุดที่แก้ไข (Fixed File)", "#C6EFCE")
-
-    st.subheader("2. สีกราฟแท่ง")
-    color_incorrect_chart = st.color_picker("สีกราฟ Incorrect (f)", "#E05252")
-    color_correct_chart = st.color_picker("สีกราฟ Correct (t)", "#2878D0")
-
-st.title(app_title)
-st.subheader(app_subtitle)
-
-# ==================================================
-# 2. SESSION STATE FOR DYNAMIC WEEKS
+# 1. INITIALIZE ALL SESSION STATES (บันทึกค่าล่าสุดตลอด)
 # ==================================================
 if "num_weeks" not in st.session_state:
     st.session_state.num_weeks = 2
 
-# Helper Functions สำหรับจัดการปุ่มเพิ่ม/ลด ให้ตอบสนองทันที
+# ตั้งค่าเริ่มต้นของข้อความหัวข้อถ้ายังไม่มีใน Session State
+default_headers = {
+    "app_title": "⚡ CRS Gain Validator (Ultra Fast)",
+    "app_subtitle": "ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ",
+    "section_manage_title": "🛠️ จัดการชุดไฟล์ (Week)",
+    "section_chart_title": "📈 กราฟเปรียบเทียบผลรวมทุก Week",
+    "section_download_title": "📥 ดาวน์โหลดไฟล์ Excel",
+    "prefix_checked": "checked_",
+    "prefix_fixed": "fixed_",
+    "app_logo_bytes": None
+}
+
+for key, val in default_headers.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+
+# Helper Functions สำหรับปุ่มเพิ่ม/ลด และปรับตัวเลขให้บันทึกสถานะทันที
 def update_weeks(delta: int):
     new_val = st.session_state.num_weeks + delta
     st.session_state.num_weeks = max(1, min(50, new_val))
@@ -58,7 +42,63 @@ def set_weeks_direct():
     st.session_state.num_weeks = st.session_state.direct_num_input
 
 # ==================================================
-# 3. FAST VECTORIZED VALIDATION ENGINE
+# 2. SIDEBAR CONFIGURATION (บันทึกรูปและหัวข้อ)
+# ==================================================
+st.sidebar.header("⚙️ การตั้งค่าระบบ")
+
+# 2.1 ส่วนบันทึกและจัดการรูปภาพโลโก้
+with st.sidebar.expander("🖼️ อัปโหลดโลโก้แอป (Logo)", expanded=False):
+    uploaded_logo = st.file_uploader("เลือกรูปภาพโลโก้ (.png, .jpg):", type=["png", "jpg", "jpeg"], key="logo_uploader")
+    if uploaded_logo is not None:
+        st.session_state.app_logo_bytes = uploaded_logo.getvalue()
+    
+    if st.session_state.app_logo_bytes is not None:
+        st.image(st.session_state.app_logo_bytes, width=150, caption="โลโก้ปัจจุบัน")
+        if st.button("🗑️ ลบโลโก้", use_container_width=True):
+            st.session_state.app_logo_bytes = None
+            st.rerun()
+
+# 2.2 ส่วนปรับแต่งและบันทึกข้อความหัวข้อ (Title & Headers)
+with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
+    st.text_input("หัวข้อหลัก (Title):", key="app_title")
+    st.text_input("หัวข้อย่อย (Subheader):", key="app_subtitle")
+    st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", key="section_manage_title")
+    st.text_input("หัวข้อส่วนแสดงกราฟ:", key="section_chart_title")
+    st.text_input("หัวข้อส่วนดาวน์โหลด:", key="section_download_title")
+
+# 2.3 ส่วนปรับแต่งรูปแบบชื่อไฟล์
+with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
+    st.text_input("คำนำหน้าไฟล์ Checked:", key="prefix_checked")
+    st.text_input("คำนำหน้าไฟล์ Fixed:", key="prefix_fixed")
+
+# 2.4 ส่วนปรับแต่งและบันทึกสี
+with st.sidebar.expander("🎨 ปรับแต่งสีระบบ", expanded=True):
+    st.subheader("1. สีในไฟล์ Excel")
+    highlight_excel = st.checkbox("เปิดใช้งานไฮไลต์สีใน Excel", value=True, key="highlight_excel")
+    color_fail_excel = st.color_picker("สีไฮไลต์ Error 'f' (Checked File)", "#FFC7CE", key="color_fail_excel")
+    color_fix_excel = st.color_picker("สีไฮไลต์จุดที่แก้ไข (Fixed File)", "#C6EFCE", key="color_fix_excel")
+
+    st.subheader("2. สีกราฟแท่ง")
+    color_incorrect_chart = st.color_picker("สีกราฟ Incorrect (f)", "#E05252", key="color_incorrect_chart")
+    color_correct_chart = st.color_picker("สีกราฟ Correct (t)", "#2878D0", key="color_correct_chart")
+
+# ==================================================
+# 3. RENDER MAIN HEADERS & LOGO
+# ==================================================
+head_col1, head_col2 = st.columns([1, 5]) if st.session_state.app_logo_bytes else (None, None)
+
+if st.session_state.app_logo_bytes:
+    with head_col1:
+        st.image(st.session_state.app_logo_bytes, width=100)
+    with head_col2:
+        st.title(st.session_state.app_title)
+        st.subheader(st.session_state.app_subtitle)
+else:
+    st.title(st.session_state.app_title)
+    st.subheader(st.session_state.app_subtitle)
+
+# ==================================================
+# 4. FAST VALIDATION ENGINE
 # ==================================================
 VALID_PAIRS = {
     300: 1,
@@ -78,7 +118,6 @@ def clean_col_name(name: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def process_excel_fast(file_bytes: bytes, filename: str):
-    """ประมวลผลข้อมูลใน Memory ด้วย Pandas Vectorization"""
     df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
     
     if len(df_full) <= 3:
@@ -135,12 +174,11 @@ def process_excel_fast(file_bytes: bytes, filename: str):
     }
 
 def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_idx=None, fail_color="#FFC7CE", fix_color="#C6EFCE") -> bytes:
-    """เรนเดอร์สไตล์ openpyxl เฉพาะตอนดาวน์โหลดจริงเท่านั้น"""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, header=False)
         
-        if highlight_excel and highlight_type:
+        if st.session_state.highlight_excel and highlight_type:
             worksheet = writer.sheets['Sheet1']
             hex_fail = fail_color.lstrip('#')
             hex_fix = fix_color.lstrip('#')
@@ -167,9 +205,9 @@ def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_i
     return output.getvalue()
 
 # ==================================================
-# 4. CONTROLS FOR ADDING/REMOVING WEEKS (REAL-TIME UPDATES)
+# 5. CONTROLS FOR ADDING/REMOVING WEEKS
 # ==================================================
-st.markdown(f"### {section_manage_title}")
+st.markdown(f"### {st.session_state.section_manage_title}")
 
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 
@@ -186,7 +224,7 @@ with c5:
 with c6:
     st.button("➖ ลด 10", use_container_width=True, on_click=update_weeks, args=(-10,))
 
-# ช่องให้ระบุจำนวนชุดโดยตรง พร้อมซิงค์ Callback
+# ระบุตัวเลขโดยตรง พร้อมบันทึกสถานะ
 st.number_input(
     "หรือระบุจำนวนชุดอัปโหลดโดยตรง (1 - 50):", 
     min_value=1, 
@@ -200,7 +238,7 @@ st.caption(f"จำนวนชุดอัปโหลดปัจจุบั�
 st.divider()
 
 # ==================================================
-# 5. DYNAMIC UPLOAD SECTIONS
+# 6. DYNAMIC UPLOAD SECTIONS (จำชื่อค่าที่เคยกรอก)
 # ==================================================
 weeks_data_list = []
 cols_per_row = 3
@@ -212,10 +250,14 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
         if week_idx < st.session_state.num_weeks:
             with cols[j]:
                 st.subheader(f"📅 ชุดที่ {week_idx + 1}")
+                
+                name_key = f"w_name_{week_idx}"
+                if name_key not in st.session_state:
+                    st.session_state[name_key] = f"2026{16 + week_idx}"
+
                 w_name = st.text_input(
                     f"ชื่อ Week {week_idx + 1}:",
-                    value=f"2026{16 + week_idx}",
-                    key=f"w_name_{week_idx}"
+                    key=name_key
                 )
                 up_files = st.file_uploader(
                     f"📂 ลากไฟล์ Excel (ชุดที่ {week_idx + 1})",
@@ -229,7 +271,7 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
                 })
 
 # ==================================================
-# 6. PROCESS ALL WEEKS
+# 7. PROCESS ALL WEEKS
 # ==================================================
 chart_rows = []
 all_weeks_results = {}
@@ -263,17 +305,17 @@ if has_files:
                     })
 
 # ==================================================
-# 7. COMBINED CHART
+# 8. COMBINED CHART
 # ==================================================
 if chart_rows:
     st.divider()
-    st.header(section_chart_title)
+    st.header(st.session_state.section_chart_title)
 
     combined_df = pd.DataFrame(chart_rows).set_index("Week")
 
     st.bar_chart(
         combined_df,
-        color=[color_incorrect_chart, color_correct_chart],
+        color=[st.session_state.color_incorrect_chart, st.session_state.color_correct_chart],
         height=500,
         stack=True
     )
@@ -281,10 +323,10 @@ if chart_rows:
     st.dataframe(combined_df.reset_index(), use_container_width=True, hide_index=True)
 
     # ==================================================
-    # 8. LAZY DOWNLOAD SECTION
+    # 9. DOWNLOAD SECTION
     # ==================================================
     st.divider()
-    st.header(section_download_title)
+    st.header(st.session_state.section_download_title)
 
     tab_titles = [f"📦 {w_name}" for w_name in all_weeks_results.keys()]
     if tab_titles:
@@ -296,14 +338,14 @@ if chart_rows:
                     for r in w_results:
                         chk_b = df_to_excel_bytes_styled(
                             r["checked_df"], highlight_type="checked", 
-                            fail_color=color_fail_excel, fix_color=color_fix_excel
+                            fail_color=st.session_state.color_fail_excel, fix_color=st.session_state.color_fix_excel
                         )
                         fix_b = df_to_excel_bytes_styled(
                             r["fixed_df"], highlight_type="fixed", target_col_idx=r["pdsch_col_idx"],
-                            fail_color=color_fail_excel, fix_color=color_fix_excel
+                            fail_color=st.session_state.color_fail_excel, fix_color=st.session_state.color_fix_excel
                         )
-                        z.writestr(f"{prefix_checked}{r['filename']}", chk_b)
-                        z.writestr(f"{prefix_fixed}{r['filename']}", fix_b)
+                        z.writestr(f"{st.session_state.prefix_checked}{r['filename']}", chk_b)
+                        z.writestr(f"{st.session_state.prefix_fixed}{r['filename']}", fix_b)
 
                 st.download_button(
                     f"📦 ดาวน์โหลดไฟล์ทั้งหมดของ {w_name} (ZIP รวม)",
@@ -324,18 +366,18 @@ if chart_rows:
                         
                         chk_bytes = df_to_excel_bytes_styled(
                             r["checked_df"], highlight_type="checked", 
-                            fail_color=color_fail_excel, fix_color=color_fix_excel
+                            fail_color=st.session_state.color_fail_excel, fix_color=st.session_state.color_fix_excel
                         )
                         fix_bytes = df_to_excel_bytes_styled(
                             r["fixed_df"], highlight_type="fixed", target_col_idx=r["pdsch_col_idx"],
-                            fail_color=color_fail_excel, fix_color=color_fix_excel
+                            fail_color=st.session_state.color_fail_excel, fix_color=st.session_state.color_fix_excel
                         )
 
                         with btn_col1:
                             st.download_button(
                                 label=f"⬇️ โหลด Checked ({r['filename']})",
                                 data=chk_bytes,
-                                file_name=f"{prefix_checked}{r['filename']}",
+                                file_name=f"{st.session_state.prefix_checked}{r['filename']}",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True,
                                 key=f"btn_chk_{tab_idx}_{file_idx}_{r['filename']}"
@@ -345,7 +387,7 @@ if chart_rows:
                             st.download_button(
                                 label=f"⬇️ โหลด Fixed ({r['filename']})",
                                 data=fix_bytes,
-                                file_name=f"{prefix_fixed}{r['filename']}",
+                                file_name=f"{st.session_state.prefix_fixed}{r['filename']}",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True,
                                 key=f"btn_fix_{tab_idx}_{file_idx}_{r['filename']}"
