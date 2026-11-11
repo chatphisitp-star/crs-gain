@@ -50,7 +50,6 @@ st.subheader(app_subtitle)
 if "num_weeks" not in st.session_state:
     st.session_state.num_weeks = 2
 
-# ฟังก์ชันอัปเดตจำนวนชุดพร้อมจำค่าล่าสุด
 def update_weeks(delta: int):
     new_val = st.session_state.num_weeks + delta
     st.session_state.num_weeks = max(1, min(50, new_val))
@@ -81,25 +80,44 @@ def clean_col_name(name: str) -> str:
 def process_excel_fast(file_bytes: bytes, filename: str):
     df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
     
-    if len(df_full) <= 3:
-        raise ValueError("ไฟล์มีข้อมูลไม่ถึง Row 4")
+    if len(df_full) < 1:
+        raise ValueError("ไฟล์ไม่มีข้อมูล")
 
-    header_row = df_full.iloc[3]
+    header_row_idx = None
     crs_col_idx = None
     pdsch_col_idx = None
 
-    for idx, col in enumerate(header_row):
-        clean_name = clean_col_name(col)
-        if clean_name == "crsgain":
-            crs_col_idx = idx
-        elif clean_name == "pdschtypebgain":
-            pdsch_col_idx = idx
+    # ค้นหาคอลัมน์ในแถวที่ 1 ถึง 10 (Row Index 0 ถึง 9)
+    max_search_rows = min(10, len(df_full))
+    for r_idx in range(max_search_rows):
+        row_values = df_full.iloc[r_idx]
+        found_crs = None
+        found_pdsch = None
 
-    if crs_col_idx is None or pdsch_col_idx is None:
-        raise ValueError("ไม่พบ 'crsGain' หรือ 'pdschTypeBGain' ใน Row 4")
+        for c_idx, col in enumerate(row_values):
+            clean_name = clean_col_name(col)
+            if clean_name == "crsgain":
+                found_crs = c_idx
+            elif clean_name == "pdschtypebgain":
+                found_pdsch = c_idx
 
-    crs_series = pd.to_numeric(df_full.iloc[4:, crs_col_idx], errors='coerce')
-    pdsch_series = pd.to_numeric(df_full.iloc[4:, pdsch_col_idx], errors='coerce')
+        # เมื่อเจอตราสารทั้ง 2 คอลัมน์ในแถวเดียวกัน ให้บันทึกตำแหน่งแล้วออกจากลูป
+        if found_crs is not None and found_pdsch is not None:
+            header_row_idx = r_idx
+            crs_col_idx = found_crs
+            pdsch_col_idx = found_pdsch
+            break
+
+    if header_row_idx is None:
+        raise ValueError("ไม่พบ 'crsGain' และ 'pdschTypeBGain' ในแถวที่ 1 ถึง 10")
+
+    data_start_idx = header_row_idx + 1
+    if data_start_idx >= len(df_full):
+        raise ValueError(f"ไม่พบข้อมูลหลังแถว Header (Row {header_row_idx + 1})")
+
+    # อ่านข้อมูลจริงเริ่มจากแถวถัดจาก Header
+    crs_series = pd.to_numeric(df_full.iloc[data_start_idx:, crs_col_idx], errors='coerce')
+    pdsch_series = pd.to_numeric(df_full.iloc[data_start_idx:, pdsch_col_idx], errors='coerce')
 
     expected_pdsch = crs_series.map(VALID_PAIRS_SERIES)
     valid_mask = crs_series.isin(VALID_PAIRS_SERIES.index) & (expected_pdsch == pdsch_series)
@@ -111,18 +129,20 @@ def process_excel_fast(file_bytes: bytes, filename: str):
     t_count = int((results_series == "t").sum())
     f_count = int((results_series == "f").sum())
 
+    # สร้าง checked_df และเพิ่มคอลัมน์ result
     df_checked = df_full.copy()
     res_col = pd.Series("", index=df_checked.index)
-    res_col.iloc[3] = "result"
-    res_col.iloc[4:] = results_series.values
+    res_col.iloc[header_row_idx] = "result"
+    res_col.iloc[data_start_idx:] = results_series.values
     df_checked[len(df_checked.columns)] = res_col
 
+    # สร้าง fixed_df และอัปเดตค่า pdschTypeBGain
     df_fixed = df_full.copy()
     fixed_pdsch = pdsch_series.copy()
     fix_mask = crs_series.isin(VALID_PAIRS_SERIES.index) & crs_series.notna()
     fixed_pdsch[fix_mask] = expected_pdsch[fix_mask]
     
-    df_fixed.iloc[4:, pdsch_col_idx] = fixed_pdsch.values
+    df_fixed.iloc[data_start_idx:, pdsch_col_idx] = fixed_pdsch.values
     df_fixed[len(df_fixed.columns)] = res_col
 
     return {
@@ -130,11 +150,12 @@ def process_excel_fast(file_bytes: bytes, filename: str):
         "checked_df": df_checked,
         "fixed_df": df_fixed,
         "pdsch_col_idx": pdsch_col_idx,
+        "header_row_idx": header_row_idx,
         "t": t_count,
         "f": f_count
     }
 
-def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_idx=None, fail_color="#FFC7CE", fix_color="#C6EFCE") -> bytes:
+def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_idx=None, header_row_idx=3, fail_color="#FFC7CE", fix_color="#C6EFCE") -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, header=False)
@@ -148,7 +169,8 @@ def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_i
             fill_fix = PatternFill(start_color=hex_fix, end_color=hex_fix, fill_type="solid")
 
             last_col_idx = df.shape[1]
-            res_series = df.iloc[4:, last_col_idx - 1]
+            data_start_idx = header_row_idx + 1
+            res_series = df.iloc[data_start_idx:, last_col_idx - 1]
             fail_rows = res_series[res_series == "f"].index
 
             if highlight_type == "checked":
@@ -185,7 +207,6 @@ with c5:
 with c6:
     st.button("➖ ลด 10", use_container_width=True, on_click=update_weeks, args=(-10,))
 
-# ซิงค์ค่าตัวเลขล่าสุดตลอดเวลา
 st.number_input(
     "หรือระบุจำนวนชุดอัปโหลดโดยตรง (1 - 50):", 
     min_value=1, 
@@ -199,7 +220,7 @@ st.caption(f"จำนวนชุดอัปโหลดปัจจุบั�
 st.divider()
 
 # ==================================================
-# 5. DYNAMIC UPLOAD SECTIONS (จำชื่อค่าที่กรอกล่าสุด)
+# 5. DYNAMIC UPLOAD SECTIONS
 # ==================================================
 weeks_data_list = []
 cols_per_row = 3
@@ -212,7 +233,6 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
             with cols[j]:
                 st.subheader(f"📅 ชุดที่ {week_idx + 1}")
                 
-                # เช็ค Session State เพื่อจำชื่อที่เคยตั้งไว้ล่าสุด
                 name_key = f"w_name_{week_idx}"
                 if name_key not in st.session_state:
                     st.session_state[name_key] = f"2026{16 + week_idx}"
@@ -267,14 +287,13 @@ if has_files:
                     })
 
 # ==================================================
-# 7. COMBINED CHART (เอียงข้อความแกน X 90 องศา)
+# 7. COMBINED CHART
 # ==================================================
 if chart_rows:
     st.divider()
 
     combined_df = pd.DataFrame(chart_rows)
     
-    # แปลงข้อมูลเป็น Long Format สำหรับสร้าง Stacked Bar Chart
     df_melted = combined_df.melt(
         id_vars=["Week"], 
         value_vars=["f - Incorrect", "t - Correct"],
@@ -282,7 +301,6 @@ if chart_rows:
         value_name="Count"
     )
 
-    # สร้างกราฟพร้อมกำหนด Title ลงในพร็อพเพอร์ตี้ของตัวกราฟโดยตรง และเอียงแกน X -90 องศา
     chart = (
         alt.Chart(df_melted)
         .mark_bar()
@@ -329,10 +347,12 @@ if chart_rows:
                     for r in w_results:
                         chk_b = df_to_excel_bytes_styled(
                             r["checked_df"], highlight_type="checked", 
+                            header_row_idx=r["header_row_idx"],
                             fail_color=color_fail_excel, fix_color=color_fix_excel
                         )
                         fix_b = df_to_excel_bytes_styled(
                             r["fixed_df"], highlight_type="fixed", target_col_idx=r["pdsch_col_idx"],
+                            header_row_idx=r["header_row_idx"],
                             fail_color=color_fail_excel, fix_color=color_fix_excel
                         )
                         z.writestr(f"{prefix_checked}{r['filename']}", chk_b)
@@ -357,10 +377,12 @@ if chart_rows:
                         
                         chk_bytes = df_to_excel_bytes_styled(
                             r["checked_df"], highlight_type="checked", 
+                            header_row_idx=r["header_row_idx"],
                             fail_color=color_fail_excel, fix_color=color_fix_excel
                         )
                         fix_bytes = df_to_excel_bytes_styled(
                             r["fixed_df"], highlight_type="fixed", target_col_idx=r["pdsch_col_idx"],
+                            header_row_idx=r["header_row_idx"],
                             fail_color=color_fail_excel, fix_color=color_fix_excel
                         )
 
