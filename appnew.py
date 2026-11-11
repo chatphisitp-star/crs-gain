@@ -13,28 +13,19 @@ st.set_page_config(
 )
 
 # ==================================================
-# 1. SIDEBAR CONFIGURATION (บันทึกค่าหัวข้ออัตโนมัติ)
+# 1. SIDEBAR CONFIGURATION
 # ==================================================
 st.sidebar.header("⚙️ การตั้งค่าระบบ")
 
-# กำหนดค่าเริ่มต้นให้ Session State หากเพิ่งเปิดใช้งานครั้งแรก
-if "app_title" not in st.session_state:
-    st.session_state.app_title = "CRS Gain Validator "
-if "app_subtitle" not in st.session_state:
-    st.session_state.app_subtitle = "ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
-if "section_manage_title" not in st.session_state:
-    st.session_state.section_manage_title = "🛠️ จัดการชุดไฟล์ (Week)"
-if "section_chart_title" not in st.session_state:
-    st.session_state.section_chart_title = "CRS Gain, pdschTypeBGain"
-if "section_download_title" not in st.session_state:
-    st.session_state.section_download_title = "ดาวน์โหลดไฟล์ Excel"
-
 with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
-    app_title = st.text_input("หัวข้อหลัก (Title):", key="app_title")
-    app_subtitle = st.text_input("หัวข้อย่อย (Subheader):", key="app_subtitle")
-    section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", key="section_manage_title")
-    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", key="section_chart_title")
-    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", key="section_download_title")
+    app_title = st.text_input("หัวข้อหลัก (Title):", value="⚡ CRS Gain Validator (Ultra Fast)")
+    app_subtitle = st.text_input(
+        "หัวข้อย่อย (Subheader):", 
+        value="ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
+    )
+    section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", value="🛠️ จัดการชุดไฟล์ (Week)")
+    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", value="📈 กราฟเปรียบเทียบผลรวมทุก Week")
+    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", value="📥 ดาวน์โหลดไฟล์ Excel")
 
 with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
     prefix_checked = st.text_input("คำนำหน้าไฟล์ Checked:", value="checked_")
@@ -59,6 +50,7 @@ st.subheader(app_subtitle)
 if "num_weeks" not in st.session_state:
     st.session_state.num_weeks = 2
 
+# ฟังก์ชันอัปเดตจำนวนชุดพร้อมจำค่าล่าสุด
 def update_weeks(delta: int):
     new_val = st.session_state.num_weeks + delta
     st.session_state.num_weeks = max(1, min(50, new_val))
@@ -86,8 +78,16 @@ def clean_col_name(name: str) -> str:
     return re.sub(r'[^a-zA-Z0-9]', '', str(name)).lower()
 
 @st.cache_data(show_spinner=False)
-def process_excel_fast(file_bytes: bytes, filename: str):
-    df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
+def process_file_fast(file_bytes: bytes, filename: str):
+    # รองรับการอ่านทั้งไฟล์ .txt, .csv และ .xlsx
+    if filename.lower().endswith(('.txt', '.csv')):
+        try:
+            # ลองอ่านด้วย delimiter แบบ Tab ก่อน หากไม่ได้ผลจะลองสแกนอัตโนมัติ
+            df_full = pd.read_csv(io.BytesIO(file_bytes), header=None, sep=r'\s+|\t|,', engine='python')
+        except Exception:
+            df_full = pd.read_csv(io.BytesIO(file_bytes), header=None)
+    else:
+        df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
     
     if len(df_full) <= 3:
         raise ValueError("ไฟล์มีข้อมูลไม่ถึง Row 4")
@@ -193,6 +193,7 @@ with c5:
 with c6:
     st.button("➖ ลด 10", use_container_width=True, on_click=update_weeks, args=(-10,))
 
+# ซิงค์ค่าตัวเลขล่าสุดตลอดเวลา
 st.number_input(
     "หรือระบุจำนวนชุดอัปโหลดโดยตรง (1 - 50):", 
     min_value=1, 
@@ -206,7 +207,7 @@ st.caption(f"จำนวนชุดอัปโหลดปัจจุบั�
 st.divider()
 
 # ==================================================
-# 5. DYNAMIC UPLOAD SECTIONS
+# 5. DYNAMIC UPLOAD SECTIONS (จำชื่อค่าที่กรอกล่าสุด)
 # ==================================================
 weeks_data_list = []
 cols_per_row = 3
@@ -219,6 +220,7 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
             with cols[j]:
                 st.subheader(f"📅 ชุดที่ {week_idx + 1}")
                 
+                # เช็ค Session State เพื่อจำชื่อที่เคยตั้งไว้ล่าสุด
                 name_key = f"w_name_{week_idx}"
                 if name_key not in st.session_state:
                     st.session_state[name_key] = f"2026{16 + week_idx}"
@@ -228,8 +230,8 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
                     key=name_key
                 )
                 up_files = st.file_uploader(
-                    f"📂 ลากไฟล์ Excel (ชุดที่ {week_idx + 1})",
-                    type=["xlsx"],
+                    f"📂 ลากไฟล์ Excel/TXT (ชุดที่ {week_idx + 1})",
+                    type=["xlsx", "txt", "csv"],
                     accept_multiple_files=True,
                     key=f"uploader_{week_idx}"
                 )
@@ -257,7 +259,7 @@ if has_files:
                 for uploaded_file in files[:50]:
                     try:
                         file_bytes = uploaded_file.getvalue()
-                        res = process_excel_fast(file_bytes, uploaded_file.name)
+                        res = process_file_fast(file_bytes, uploaded_file.name)
                         w_results.append(res)
                     except Exception as e:
                         st.error(f"❌ [{w_name}] {uploaded_file.name}: {str(e)}")
@@ -273,13 +275,14 @@ if has_files:
                     })
 
 # ==================================================
-# 7. COMBINED CHART (แกน X เอียง 90 องศา)
+# 7. COMBINED CHART (ใช้อัลแตร์ Altair เพื่อดึง Header ลงรูปตอน Download)
 # ==================================================
 if chart_rows:
     st.divider()
 
     combined_df = pd.DataFrame(chart_rows)
     
+    # แปลงข้อมูลเป็น Long Format สำหรับสร้าง Stacked Bar Chart
     df_melted = combined_df.melt(
         id_vars=["Week"], 
         value_vars=["f - Incorrect", "t - Correct"],
@@ -287,11 +290,12 @@ if chart_rows:
         value_name="Count"
     )
 
+    # สร้างกราฟพร้อมกำหนด Title ลงในพร็อพเพอร์ตี้ของตัวกราฟโดยตรง
     chart = (
         alt.Chart(df_melted)
         .mark_bar()
         .encode(
-            x=alt.X("Week:N", title=None, axis=alt.Axis(labelAngle=90)),
+            x=alt.X("Week:N", title=None, axis=alt.Axis(labelAngle=0)),
             y=alt.Y("Count:Q", title="Count"),
             color=alt.Color(
                 "Status:N",
@@ -339,8 +343,10 @@ if chart_rows:
                             r["fixed_df"], highlight_type="fixed", target_col_idx=r["pdsch_col_idx"],
                             fail_color=color_fail_excel, fix_color=color_fix_excel
                         )
-                        z.writestr(f"{prefix_checked}{r['filename']}", chk_b)
-                        z.writestr(f"{prefix_fixed}{r['filename']}", fix_b)
+                        # ตัดนามสกุลไฟล์เดิมออก แล้วบันทึกเป็น .xlsx
+                        base_filename = re.sub(r'\.(xlsx|txt|csv)$', '', r['filename'], flags=re.IGNORECASE)
+                        z.writestr(f"{prefix_checked}{base_filename}.xlsx", chk_b)
+                        z.writestr(f"{prefix_fixed}{base_filename}.xlsx", fix_b)
 
                 st.download_button(
                     f"📦 ดาวน์โหลดไฟล์ทั้งหมดของ {w_name} (ZIP รวม)",
@@ -368,11 +374,13 @@ if chart_rows:
                             fail_color=color_fail_excel, fix_color=color_fix_excel
                         )
 
+                        base_filename = re.sub(r'\.(xlsx|txt|csv)$', '', r['filename'], flags=re.IGNORECASE)
+
                         with btn_col1:
                             st.download_button(
-                                label=f"⬇️ โหลด Checked ({r['filename']})",
+                                label=f"⬇️ โหลด Checked ({base_filename}.xlsx)",
                                 data=chk_bytes,
-                                file_name=f"{prefix_checked}{r['filename']}",
+                                file_name=f"{prefix_checked}{base_filename}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True,
                                 key=f"btn_chk_{tab_idx}_{file_idx}_{r['filename']}"
@@ -380,9 +388,9 @@ if chart_rows:
 
                         with btn_col2:
                             st.download_button(
-                                label=f"⬇️ โหลด Fixed ({r['filename']})",
+                                label=f"⬇️ โหลด Fixed ({base_filename}.xlsx)",
                                 data=fix_bytes,
-                                file_name=f"{prefix_fixed}{r['filename']}",
+                                file_name=f"{prefix_fixed}{base_filename}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True,
                                 key=f"btn_fix_{tab_idx}_{file_idx}_{r['filename']}"
