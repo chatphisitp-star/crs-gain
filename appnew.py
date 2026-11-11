@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 # ==================================================
-# 1. SIDEBAR CONFIGURATION (ปรับแต่งหัวข้อและสี)
+# 1. SIDEBAR CONFIGURATION (ปรับแต่งหัวข้อ สี และการจัดการชุด)
 # ==================================================
 st.sidebar.header("⚙️ การตั้งค่าระบบ")
 
@@ -171,24 +171,50 @@ def process_excel(uploaded_file):
     }
 
 # ==================================================
-# 7. CONTROLS FOR ADDING/REMOVING WEEKS
+# 7. CONTROLS FOR ADDING/REMOVING WEEKS (ปรับแต่งการเพิ่มครั้งละ 5, 10)
 # ==================================================
 st.markdown(f"### {section_manage_title}")
-ctrl_col1, ctrl_col2, _ = st.columns([1, 1, 3])
 
-with ctrl_col1:
-    if st.button("➕ เพิ่มชุดไฟล์ (Week)", use_container_width=True):
-        if st.session_state.num_weeks < 50:
-            st.session_state.num_weeks += 1
-            st.rerun()
-        else:
-            st.warning("จำกัดสูงสุด 50 ชุด")
+# จัดกลุ่มปุ่มเพิ่ม/ลดทีละ 1, 5, 10
+c1, c2, c3, c4, c5, c6 = st.columns(6)
 
-with ctrl_col2:
-    if st.button("➖ ลดชุดไฟล์", use_container_width=True):
-        if st.session_state.num_weeks > 1:
-            st.session_state.num_weeks -= 1
-            st.rerun()
+with c1:
+    if st.button("➕ เพิ่ม 1", use_container_width=True):
+        st.session_state.num_weeks = min(50, st.session_state.num_weeks + 1)
+        st.rerun()
+with c2:
+    if st.button("➕ เพิ่ม 5", use_container_width=True):
+        st.session_state.num_weeks = min(50, st.session_state.num_weeks + 5)
+        st.rerun()
+with c3:
+    if st.button("➕ เพิ่ม 10", use_container_width=True):
+        st.session_state.num_weeks = min(50, st.session_state.num_weeks + 10)
+        st.rerun()
+with c4:
+    if st.button("➖ ลด 1", use_container_width=True):
+        st.session_state.num_weeks = max(1, st.session_state.num_weeks - 1)
+        st.rerun()
+with c5:
+    if st.button("➖ ลด 5", use_container_width=True):
+        st.session_state.num_weeks = max(1, st.session_state.num_weeks - 5)
+        st.rerun()
+with c6:
+    if st.button("➖ ลด 10", use_container_width=True):
+        st.session_state.num_weeks = max(1, st.session_state.num_weeks - 10)
+        st.rerun()
+
+# ช่องให้ระบุจำนวนชุดโดยตรง
+direct_num = st.number_input(
+    "หรือระบุจำนวนชุดอัปโหลดโดยตรง (1 - 50):", 
+    min_value=1, 
+    max_value=50, 
+    value=st.session_state.num_weeks,
+    key="direct_num_input"
+)
+
+if direct_num != st.session_state.num_weeks:
+    st.session_state.num_weeks = direct_num
+    st.rerun()
 
 st.caption(f"จำนวนชุดอัปโหลดปัจจุบัน: **{st.session_state.num_weeks}** ชุด")
 st.divider()
