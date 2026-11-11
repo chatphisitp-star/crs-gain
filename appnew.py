@@ -267,7 +267,7 @@ if has_files:
                     })
 
 # ==================================================
-# 7. COMBINED CHART (ใช้อัลแตร์ Altair เพื่อดึง Header ลงรูปตอน Download)
+# 7. COMBINED CHART (เอียงข้อความแกน X 90 องศา)
 # ==================================================
 if chart_rows:
     st.divider()
@@ -282,12 +282,12 @@ if chart_rows:
         value_name="Count"
     )
 
-    # สร้างกราฟพร้อมกำหนด Title ลงในพร็อพเพอร์ตี้ของตัวกราฟโดยตรง
+    # สร้างกราฟพร้อมกำหนด Title ลงในพร็อพเพอร์ตี้ของตัวกราฟโดยตรง และเอียงแกน X -90 องศา
     chart = (
         alt.Chart(df_melted)
         .mark_bar()
         .encode(
-            x=alt.X("Week:N", title=None, axis=alt.Axis(labelAngle=0)),
+            x=alt.X("Week:N", title=None, axis=alt.Axis(labelAngle=-90)),
             y=alt.Y("Count:Q", title="Count"),
             color=alt.Color(
                 "Status:N",
