@@ -3,7 +3,6 @@ import re
 import zipfile
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
 from openpyxl.styles import PatternFill
 
 st.set_page_config(
@@ -13,11 +12,12 @@ st.set_page_config(
 )
 
 # ==================================================
-# 1. INITIALIZE ALL SESSION STATES
+# 1. INITIALIZE ALL SESSION STATES (บันทึกค่าล่าสุดตลอด)
 # ==================================================
 if "num_weeks" not in st.session_state:
     st.session_state.num_weeks = 2
 
+# ตั้งค่าเริ่มต้นของข้อความหัวข้อถ้ายังไม่มีใน Session State
 default_headers = {
     "app_title": "⚡ CRS Gain Validator (Ultra Fast)",
     "app_subtitle": "ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ",
@@ -33,6 +33,7 @@ for key, val in default_headers.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
+# Helper Functions สำหรับปุ่มเพิ่ม/ลด และปรับตัวเลขให้บันทึกสถานะทันที
 def update_weeks(delta: int):
     new_val = st.session_state.num_weeks + delta
     st.session_state.num_weeks = max(1, min(50, new_val))
@@ -41,10 +42,11 @@ def set_weeks_direct():
     st.session_state.num_weeks = st.session_state.direct_num_input
 
 # ==================================================
-# 2. SIDEBAR CONFIGURATION
+# 2. SIDEBAR CONFIGURATION (บันทึกรูปและหัวข้อ)
 # ==================================================
 st.sidebar.header("⚙️ การตั้งค่าระบบ")
 
+# 2.1 ส่วนบันทึกและจัดการรูปภาพโลโก้
 with st.sidebar.expander("🖼️ อัปโหลดโลโก้แอป (Logo)", expanded=False):
     uploaded_logo = st.file_uploader("เลือกรูปภาพโลโก้ (.png, .jpg):", type=["png", "jpg", "jpeg"], key="logo_uploader")
     if uploaded_logo is not None:
@@ -56,6 +58,7 @@ with st.sidebar.expander("🖼️ อัปโหลดโลโก้แอป 
             st.session_state.app_logo_bytes = None
             st.rerun()
 
+# 2.2 ส่วนปรับแต่งและบันทึกข้อความหัวข้อ (Title & Headers)
 with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
     st.text_input("หัวข้อหลัก (Title):", key="app_title")
     st.text_input("หัวข้อย่อย (Subheader):", key="app_subtitle")
@@ -63,10 +66,12 @@ with st.sidebar.expander("📝 ปรับแต่งข้อความห�
     st.text_input("หัวข้อส่วนแสดงกราฟ:", key="section_chart_title")
     st.text_input("หัวข้อส่วนดาวน์โหลด:", key="section_download_title")
 
+# 2.3 ส่วนปรับแต่งรูปแบบชื่อไฟล์
 with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
     st.text_input("คำนำหน้าไฟล์ Checked:", key="prefix_checked")
     st.text_input("คำนำหน้าไฟล์ Fixed:", key="prefix_fixed")
 
+# 2.4 ส่วนปรับแต่งและบันทึกสี
 with st.sidebar.expander("🎨 ปรับแต่งสีระบบ", expanded=True):
     st.subheader("1. สีในไฟล์ Excel")
     highlight_excel = st.checkbox("เปิดใช้งานไฮไลต์สีใน Excel", value=True, key="highlight_excel")
@@ -80,8 +85,9 @@ with st.sidebar.expander("🎨 ปรับแต่งสีระบบ", expa
 # ==================================================
 # 3. RENDER MAIN HEADERS & LOGO
 # ==================================================
+head_col1, head_col2 = st.columns([1, 5]) if st.session_state.app_logo_bytes else (None, None)
+
 if st.session_state.app_logo_bytes:
-    head_col1, head_col2 = st.columns([1, 5])
     with head_col1:
         st.image(st.session_state.app_logo_bytes, width=100)
     with head_col2:
@@ -218,6 +224,7 @@ with c5:
 with c6:
     st.button("➖ ลด 10", use_container_width=True, on_click=update_weeks, args=(-10,))
 
+# ระบุตัวเลขโดยตรง พร้อมบันทึกสถานะ
 st.number_input(
     "หรือระบุจำนวนชุดอัปโหลดโดยตรง (1 - 50):", 
     min_value=1, 
@@ -231,7 +238,7 @@ st.caption(f"จำนวนชุดอัปโหลดปัจจุบั�
 st.divider()
 
 # ==================================================
-# 6. DYNAMIC UPLOAD SECTIONS
+# 6. DYNAMIC UPLOAD SECTIONS (จำชื่อค่าที่เคยกรอก)
 # ==================================================
 weeks_data_list = []
 cols_per_row = 3
@@ -298,52 +305,22 @@ if has_files:
                     })
 
 # ==================================================
-# 8. MATPLOTLIB CHART (ฝังหัวข้อลงไฟล์ภาพสำหรับดาวน์โหลด)
+# 8. COMBINED CHART
 # ==================================================
 if chart_rows:
     st.divider()
     st.header(st.session_state.section_chart_title)
 
-    combined_df = pd.DataFrame(chart_rows)
+    combined_df = pd.DataFrame(chart_rows).set_index("Week")
 
-    # สร้างรูปภาพกราฟด้วย Matplotlib
-    fig, ax = plt.subplots(figsize=(10, 5), dpi=200)
-    
-    weeks = combined_df["Week"]
-    incorrect_vals = combined_df["f - Incorrect"]
-    correct_vals = combined_df["t - Correct"]
-
-    # พล็อต Stacked Bar Chart
-    bars1 = ax.bar(weeks, incorrect_vals, label="f - Incorrect", color=st.session_state.color_incorrect_chart)
-    bars2 = ax.bar(weeks, correct_vals, bottom=incorrect_vals, label="t - Correct", color=st.session_state.color_correct_chart)
-
-    # ฝังหัวข้อหลักลงไปในตัวภาพกราฟ
-    ax.set_title(st.session_state.section_chart_title, fontsize=16, fontweight='bold', pad=15)
-    ax.set_xlabel("รายการ Week", fontsize=11, labelpad=10)
-    ax.set_ylabel("จำนวนจุดตรวจเช็ค (Count)", fontsize=11, labelpad=10)
-    ax.legend(title="ผลการตรวจเช็ค", loc="upper right")
-    ax.grid(axis='y', linestyle='--', alpha=0.5)
-
-    plt.tight_layout()
-
-    # แสดงผลบน Streamlit UI
-    st.pyplot(fig)
-
-    # แปลงรูปภาพกราฟเป็น Bytes สำหรับปุ่มดาวน์โหลดติดหัวข้อ
-    img_buffer = io.BytesIO()
-    fig.savefig(img_buffer, format="png", bbox_inches="tight")
-    img_buffer.seek(0)
-
-    # ปุ่มดาวน์โหลดรูปภาพกราฟ (ติดหัวข้อไปด้วยแน่นอน)
-    st.download_button(
-        label="🖼️ ดาวน์โหลดรูปภาพกราฟความละเอียดสูง (ติดหัวข้อ)",
-        data=img_buffer.getvalue(),
-        file_name="crs_chart_with_header.png",
-        mime="image/png",
-        use_container_width=True
+    st.bar_chart(
+        combined_df,
+        color=[st.session_state.color_incorrect_chart, st.session_state.color_correct_chart],
+        height=500,
+        stack=True
     )
 
-    st.dataframe(combined_df, use_container_width=True, hide_index=True)
+    st.dataframe(combined_df.reset_index(), use_container_width=True, hide_index=True)
 
     # ==================================================
     # 9. DOWNLOAD SECTION
