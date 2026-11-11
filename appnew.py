@@ -13,19 +13,28 @@ st.set_page_config(
 )
 
 # ==================================================
-# 1. SIDEBAR CONFIGURATION
+# 1. SIDEBAR CONFIGURATION (บันทึกค่าหัวข้ออัตโนมัติ)
 # ==================================================
 st.sidebar.header("⚙️ การตั้งค่าระบบ")
 
+# กำหนดค่าเริ่มต้นให้ Session State หากเพิ่งเปิดใช้งานครั้งแรก
+if "app_title" not in st.session_state:
+    st.session_state.app_title = "⚡ CRS Gain Validator (Ultra Fast)"
+if "app_subtitle" not in st.session_state:
+    st.session_state.app_subtitle = "ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
+if "section_manage_title" not in st.session_state:
+    st.session_state.section_manage_title = "🛠️ จัดการชุดไฟล์ (Week)"
+if "section_chart_title" not in st.session_state:
+    st.session_state.section_chart_title = "📈 กราฟเปรียบเทียบผลรวมทุก Week"
+if "section_download_title" not in st.session_state:
+    st.session_state.section_download_title = "📥 ดาวน์โหลดไฟล์ Excel"
+
 with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
-    app_title = st.text_input("หัวข้อหลัก (Title):", value="⚡ CRS Gain Validator (Ultra Fast)")
-    app_subtitle = st.text_input(
-        "หัวข้อย่อย (Subheader):", 
-        value="ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
-    )
-    section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", value="🛠️ จัดการชุดไฟล์ (Week)")
-    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", value="📈 กราฟเปรียบเทียบผลรวมทุก Week")
-    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", value="📥 ดาวน์โหลดไฟล์ Excel")
+    app_title = st.text_input("หัวข้อหลัก (Title):", key="app_title")
+    app_subtitle = st.text_input("หัวข้อย่อย (Subheader):", key="app_subtitle")
+    section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", key="section_manage_title")
+    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", key="section_chart_title")
+    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", key="section_download_title")
 
 with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
     prefix_checked = st.text_input("คำนำหน้าไฟล์ Checked:", value="checked_")
@@ -50,7 +59,6 @@ st.subheader(app_subtitle)
 if "num_weeks" not in st.session_state:
     st.session_state.num_weeks = 2
 
-# ฟังก์ชันอัปเดตจำนวนชุดพร้อมจำค่าล่าสุด
 def update_weeks(delta: int):
     new_val = st.session_state.num_weeks + delta
     st.session_state.num_weeks = max(1, min(50, new_val))
@@ -185,7 +193,6 @@ with c5:
 with c6:
     st.button("➖ ลด 10", use_container_width=True, on_click=update_weeks, args=(-10,))
 
-# ซิงค์ค่าตัวเลขล่าสุดตลอดเวลา
 st.number_input(
     "หรือระบุจำนวนชุดอัปโหลดโดยตรง (1 - 50):", 
     min_value=1, 
@@ -199,7 +206,7 @@ st.caption(f"จำนวนชุดอัปโหลดปัจจุบั�
 st.divider()
 
 # ==================================================
-# 5. DYNAMIC UPLOAD SECTIONS (จำชื่อค่าที่กรอกล่าสุด)
+# 5. DYNAMIC UPLOAD SECTIONS
 # ==================================================
 weeks_data_list = []
 cols_per_row = 3
@@ -212,7 +219,6 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
             with cols[j]:
                 st.subheader(f"📅 ชุดที่ {week_idx + 1}")
                 
-                # เช็ค Session State เพื่อจำชื่อที่เคยตั้งไว้ล่าสุด
                 name_key = f"w_name_{week_idx}"
                 if name_key not in st.session_state:
                     st.session_state[name_key] = f"2026{16 + week_idx}"
@@ -274,7 +280,6 @@ if chart_rows:
 
     combined_df = pd.DataFrame(chart_rows)
     
-    # แปลงข้อมูลเป็น Long Format สำหรับสร้าง Stacked Bar Chart
     df_melted = combined_df.melt(
         id_vars=["Week"], 
         value_vars=["f - Incorrect", "t - Correct"],
@@ -282,7 +287,6 @@ if chart_rows:
         value_name="Count"
     )
 
-    # กำหนด labelAngle=90 ใน axis ของแกน X
     chart = (
         alt.Chart(df_melted)
         .mark_bar()
