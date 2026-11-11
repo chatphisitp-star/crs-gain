@@ -7,18 +7,17 @@ from openpyxl.styles import PatternFill
 
 st.set_page_config(
     page_title="CRS Gain Validator",
-    page_icon="📊",
+    page_icon="⚡",
     layout="wide"
 )
 
 # ==================================================
-# 1. SIDEBAR CONFIGURATION (ปรับแต่งหัวข้อ สี และการจัดการชุด)
+# 1. SIDEBAR CONFIGURATION
 # ==================================================
 st.sidebar.header("⚙️ การตั้งค่าระบบ")
 
-# 1.1 ส่วนปรับแต่งข้อความหัวข้อ (Title Settings)
 with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
-    app_title = st.text_input("หัวข้อหลัก (Title):", value="📊 CRS Gain Validator")
+    app_title = st.text_input("หัวข้อหลัก (Title):", value="⚡ CRS Gain Validator (Ultra Fast)")
     app_subtitle = st.text_input(
         "หัวข้อย่อย (Subheader):", 
         value="ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
@@ -27,12 +26,10 @@ with st.sidebar.expander("📝 ปรับแต่งข้อความห�
     section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", value="📈 กราฟเปรียบเทียบผลรวมทุก Week")
     section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", value="📥 ดาวน์โหลดไฟล์ Excel")
 
-# 1.2 ส่วนปรับแต่งรูปแบบชื่อไฟล์ (File Name Format)
 with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
     prefix_checked = st.text_input("คำนำหน้าไฟล์ Checked:", value="checked_")
     prefix_fixed = st.text_input("คำนำหน้าไฟล์ Fixed:", value="fixed_")
 
-# 1.3 ส่วนปรับแต่งสี (Color Picker)
 with st.sidebar.expander("🎨 ปรับแต่งสีระบบ", expanded=True):
     st.subheader("1. สีในไฟล์ Excel")
     highlight_excel = st.checkbox("เปิดใช้งานไฮไลต์สีใน Excel", value=True)
@@ -43,21 +40,17 @@ with st.sidebar.expander("🎨 ปรับแต่งสีระบบ", expa
     color_incorrect_chart = st.color_picker("สีกราฟ Incorrect (f)", "#E05252")
     color_correct_chart = st.color_picker("สีกราฟ Correct (t)", "#2878D0")
 
-
-# ==================================================
-# 2. RENDER MAIN HEADERS
-# ==================================================
 st.title(app_title)
 st.subheader(app_subtitle)
 
 # ==================================================
-# 3. SESSION STATE FOR DYNAMIC WEEKS
+# 2. SESSION STATE FOR DYNAMIC WEEKS
 # ==================================================
 if "num_weeks" not in st.session_state:
     st.session_state.num_weeks = 2
 
 # ==================================================
-# 4. VALIDATION RULES & HELPER FUNCTIONS
+# 3. FAST VECTORIZED VALIDATION ENGINE
 # ==================================================
 VALID_PAIRS = {
     300: 1,
@@ -68,52 +61,16 @@ VALID_PAIRS = {
     0: 0
 }
 
+VALID_PAIRS_SERIES = pd.Series(VALID_PAIRS)
+
 def clean_col_name(name: str) -> str:
     if pd.isna(name):
         return ""
     return re.sub(r'[^a-zA-Z0-9]', '', str(name)).lower()
 
-def parse_int_series(series: pd.Series) -> pd.Series:
-    return pd.to_numeric(series, errors='coerce').astype('Int64')
-
-# ==================================================
-# 5. EXCEL GENERATION WITH STYLES
-# ==================================================
-def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_idx=None, fail_color="#FFC7CE", fix_color="#C6EFCE") -> bytes:
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, header=False)
-        workbook = writer.book
-        worksheet = writer.sheets['Sheet1']
-
-        if highlight_excel and highlight_type:
-            hex_fail = fail_color.lstrip('#')
-            hex_fix = fix_color.lstrip('#')
-            
-            fill_fail = PatternFill(start_color=hex_fail, end_color=hex_fail, fill_type="solid")
-            fill_fix = PatternFill(start_color=hex_fix, end_color=hex_fix, fill_type="solid")
-
-            last_col_idx = df.shape[1]
-
-            for row in range(5, df.shape[0] + 1):
-                res_val = worksheet.cell(row=row, column=last_col_idx).value
-                
-                if highlight_type == "checked" and res_val == "f":
-                    for col in range(1, last_col_idx + 1):
-                        worksheet.cell(row=row, column=col).fill = fill_fail
-
-                elif highlight_type == "fixed" and res_val == "f":
-                    if target_col_idx is not None:
-                        worksheet.cell(row=row, column=target_col_idx + 1).fill = fill_fix
-
-    output.seek(0)
-    return output.getvalue()
-
-# ==================================================
-# 6. PROCESS EXCEL FUNCTION
-# ==================================================
-def process_excel(uploaded_file):
-    file_bytes = uploaded_file.getvalue()
+@st.cache_data(show_spinner=False)
+def process_excel_fast(file_bytes: bytes, filename: str):
+    """ประมวลผลข้อมูลใน Memory ด้วย Pandas Vectorization (ไม่ทำ I/O หรือ Excel Formatting)"""
     df_full = pd.read_excel(io.BytesIO(file_bytes), header=None)
     
     if len(df_full) <= 3:
@@ -133,36 +90,35 @@ def process_excel(uploaded_file):
     if crs_col_idx is None or pdsch_col_idx is None:
         raise ValueError("ไม่พบ 'crsGain' หรือ 'pdschTypeBGain' ใน Row 4")
 
-    crs_series = parse_int_series(df_full.iloc[4:, crs_col_idx])
-    pdsch_series = parse_int_series(df_full.iloc[4:, pdsch_col_idx])
+    crs_series = pd.to_numeric(df_full.iloc[4:, crs_col_idx], errors='coerce')
+    pdsch_series = pd.to_numeric(df_full.iloc[4:, pdsch_col_idx], errors='coerce')
 
-    expected_pdsch = crs_series.map(VALID_PAIRS)
-    valid_mask = crs_series.isin(VALID_PAIRS) & (expected_pdsch == pdsch_series)
+    expected_pdsch = crs_series.map(VALID_PAIRS_SERIES)
+    valid_mask = crs_series.isin(VALID_PAIRS_SERIES.index) & (expected_pdsch == pdsch_series)
     non_null_mask = crs_series.notna() & pdsch_series.notna()
-    
+
     results_series = pd.Series("", index=crs_series.index)
     results_series[non_null_mask] = valid_mask[non_null_mask].map({True: 't', False: 'f'})
 
-    t_count = (results_series == "t").sum()
-    f_count = (results_series == "f").sum()
+    t_count = int((results_series == "t").sum())
+    f_count = int((results_series == "f").sum())
 
-    # สร้าง DataFrame Checked
     df_checked = df_full.copy()
     res_col = pd.Series("", index=df_checked.index)
     res_col.iloc[3] = "result"
     res_col.iloc[4:] = results_series.values
     df_checked[len(df_checked.columns)] = res_col
 
-    # สร้าง DataFrame Fixed
     df_fixed = df_full.copy()
     fixed_pdsch = pdsch_series.copy()
-    fix_mask = crs_series.isin(VALID_PAIRS) & crs_series.notna()
+    fix_mask = crs_series.isin(VALID_PAIRS_SERIES.index) & crs_series.notna()
     fixed_pdsch[fix_mask] = expected_pdsch[fix_mask]
+    
     df_fixed.iloc[4:, pdsch_col_idx] = fixed_pdsch.values
     df_fixed[len(df_fixed.columns)] = res_col
 
     return {
-        "filename": uploaded_file.name,
+        "filename": filename,
         "checked_df": df_checked,
         "fixed_df": df_fixed,
         "pdsch_col_idx": pdsch_col_idx,
@@ -170,12 +126,43 @@ def process_excel(uploaded_file):
         "f": f_count
     }
 
+def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_idx=None, fail_color="#FFC7CE", fix_color="#C6EFCE") -> bytes:
+    """เรนเดอร์สไตล์ openpyxl เฉพาะตอนดาวน์โหลดจริงเท่านั้น"""
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, header=False)
+        
+        if highlight_excel and highlight_type:
+            worksheet = writer.sheets['Sheet1']
+            hex_fail = fail_color.lstrip('#')
+            hex_fix = fix_color.lstrip('#')
+            
+            fill_fail = PatternFill(start_color=hex_fail, end_color=hex_fail, fill_type="solid")
+            fill_fix = PatternFill(start_color=hex_fix, end_color=hex_fix, fill_type="solid")
+
+            last_col_idx = df.shape[1]
+            res_series = df.iloc[4:, last_col_idx - 1]
+            fail_rows = res_series[res_series == "f"].index
+
+            if highlight_type == "checked":
+                for r_idx in fail_rows:
+                    row_num = r_idx + 1
+                    for col in range(1, last_col_idx + 1):
+                        worksheet.cell(row=row_num, column=col).fill = fill_fail
+
+            elif highlight_type == "fixed" and target_col_idx is not None:
+                for r_idx in fail_rows:
+                    row_num = r_idx + 1
+                    worksheet.cell(row=row_num, column=target_col_idx + 1).fill = fill_fix
+
+    output.seek(0)
+    return output.getvalue()
+
 # ==================================================
-# 7. CONTROLS FOR ADDING/REMOVING WEEKS (ปรับแต่งการเพิ่มครั้งละ 5, 10)
+# 4. CONTROLS FOR ADDING/REMOVING WEEKS
 # ==================================================
 st.markdown(f"### {section_manage_title}")
 
-# จัดกลุ่มปุ่มเพิ่ม/ลดทีละ 1, 5, 10
 c1, c2, c3, c4, c5, c6 = st.columns(6)
 
 with c1:
@@ -203,7 +190,6 @@ with c6:
         st.session_state.num_weeks = max(1, st.session_state.num_weeks - 10)
         st.rerun()
 
-# ช่องให้ระบุจำนวนชุดโดยตรง
 direct_num = st.number_input(
     "หรือระบุจำนวนชุดอัปโหลดโดยตรง (1 - 50):", 
     min_value=1, 
@@ -220,7 +206,7 @@ st.caption(f"จำนวนชุดอัปโหลดปัจจุบั�
 st.divider()
 
 # ==================================================
-# 8. DYNAMIC UPLOAD SECTIONS
+# 5. DYNAMIC UPLOAD SECTIONS
 # ==================================================
 weeks_data_list = []
 cols_per_row = 3
@@ -249,7 +235,7 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
                 })
 
 # ==================================================
-# 9. PROCESS ALL WEEKS
+# 6. PROCESS ALL WEEKS
 # ==================================================
 chart_rows = []
 all_weeks_results = {}
@@ -257,16 +243,17 @@ all_weeks_results = {}
 has_files = any(len(w["files"]) > 0 for w in weeks_data_list)
 
 if has_files:
-    with st.spinner("⏳ กำลังประมวลผลไฟล์..."):
+    with st.spinner("🚀 กำลังประมวลผลข้อมูลในความเร็วสูง..."):
         for w_data in weeks_data_list:
             w_name = w_data["name"]
             files = w_data["files"]
 
             if files:
                 w_results = []
-                for uploaded_file in files[:30]:
+                for uploaded_file in files[:50]:
                     try:
-                        res = process_excel(uploaded_file)
+                        file_bytes = uploaded_file.getvalue()
+                        res = process_excel_fast(file_bytes, uploaded_file.name)
                         w_results.append(res)
                     except Exception as e:
                         st.error(f"❌ [{w_name}] {uploaded_file.name}: {str(e)}")
@@ -282,7 +269,7 @@ if has_files:
                     })
 
 # ==================================================
-# 10. COMBINED CHART
+# 7. COMBINED CHART
 # ==================================================
 if chart_rows:
     st.divider()
@@ -300,7 +287,7 @@ if chart_rows:
     st.dataframe(combined_df.reset_index(), use_container_width=True, hide_index=True)
 
     # ==================================================
-    # 11. DOWNLOAD SECTION (ZIP + SEPARATE FILES)
+    # 8. LAZY DOWNLOAD SECTION
     # ==================================================
     st.divider()
     st.header(section_download_title)
