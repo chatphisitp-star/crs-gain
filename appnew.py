@@ -11,31 +11,53 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📊 CRS Gain Validator")
-st.subheader("ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ (ปรับแต่งสีได้ 🎨)")
+# ==================================================
+# 1. SIDEBAR CONFIGURATION (ปรับแต่งหัวข้อและสี)
+# ==================================================
+st.sidebar.header("⚙️ การตั้งค่าระบบ")
+
+# 1.1 ส่วนปรับแต่งข้อความหัวข้อ (Title Settings)
+with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
+    app_title = st.text_input("หัวข้อหลัก (Title):", value="📊 CRS Gain Validator")
+    app_subtitle = st.text_input(
+        "หัวข้อย่อย (Subheader):", 
+        value="ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
+    )
+    section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", value="🛠️ จัดการชุดไฟล์ (Week)")
+    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", value="📈 กราฟเปรียบเทียบผลรวมทุก Week")
+    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", value="📥 ดาวน์โหลดไฟล์ Excel")
+
+# 1.2 ส่วนปรับแต่งรูปแบบชื่อไฟล์ (File Name Format)
+with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
+    prefix_checked = st.text_input("คำนำหน้าไฟล์ Checked:", value="checked_")
+    prefix_fixed = st.text_input("คำนำหน้าไฟล์ Fixed:", value="fixed_")
+
+# 1.3 ส่วนปรับแต่งสี (Color Picker)
+with st.sidebar.expander("🎨 ปรับแต่งสีระบบ", expanded=True):
+    st.subheader("1. สีในไฟล์ Excel")
+    highlight_excel = st.checkbox("เปิดใช้งานไฮไลต์สีใน Excel", value=True)
+    color_fail_excel = st.color_picker("สีไฮไลต์ Error 'f' (Checked File)", "#FFC7CE")
+    color_fix_excel = st.color_picker("สีไฮไลต์จุดที่แก้ไข (Fixed File)", "#C6EFCE")
+
+    st.subheader("2. สีกราฟแท่ง")
+    color_incorrect_chart = st.color_picker("สีกราฟ Incorrect (f)", "#E05252")
+    color_correct_chart = st.color_picker("สีกราฟ Correct (t)", "#2878D0")
+
 
 # ==================================================
-# 1. SIDEBAR CONFIGURATION (ส่วนเลือกสี)
+# 2. RENDER MAIN HEADERS
 # ==================================================
-st.sidebar.header("🎨 ปรับแต่งสีระบบ")
-
-st.sidebar.subheader("1. สีในไฟล์ Excel (Export)")
-highlight_excel = st.sidebar.checkbox("เปิดใช้งานไฮไลต์สีใน Excel", value=True)
-color_fail_excel = st.sidebar.color_picker("สีไฮไลต์ Error 'f' (Checked File)", "#FFC7CE")  # แดงอ่อน
-color_fix_excel = st.sidebar.color_picker("สีไฮไลต์จุดที่แก้ไข (Fixed File)", "#C6EFCE")   # เขียวอ่อน
-
-st.sidebar.subheader("2. สีกราฟแท่ง (Dashboard)")
-color_incorrect_chart = st.sidebar.color_picker("สีกราฟ Incorrect (f)", "#E05252")
-color_correct_chart = st.sidebar.color_picker("สีกราฟ Correct (t)", "#2878D0")
+st.title(app_title)
+st.subheader(app_subtitle)
 
 # ==================================================
-# 2. SESSION STATE FOR DYNAMIC WEEKS
+# 3. SESSION STATE FOR DYNAMIC WEEKS
 # ==================================================
 if "num_weeks" not in st.session_state:
     st.session_state.num_weeks = 2
 
 # ==================================================
-# 3. VALIDATION RULES & HELPER FUNCTIONS
+# 4. VALIDATION RULES & HELPER FUNCTIONS
 # ==================================================
 VALID_PAIRS = {
     300: 1,
@@ -55,10 +77,9 @@ def parse_int_series(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors='coerce').astype('Int64')
 
 # ==================================================
-# 4. EXCEL GENERATION WITH CUSTOM COLORS
+# 5. EXCEL GENERATION WITH STYLES
 # ==================================================
 def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_idx=None, fail_color="#FFC7CE", fix_color="#C6EFCE") -> bytes:
-    """สร้างไฟล์ Excel Bytes พร้อมการระบายสีไฮไลต์ตามที่ผู้ใช้เลือก"""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, header=False)
@@ -66,26 +87,22 @@ def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_i
         worksheet = writer.sheets['Sheet1']
 
         if highlight_excel and highlight_type:
-            # ตัดเครื่องหมาย # ออกสำหรับการใช้งานใน openpyxl (HEX Format)
             hex_fail = fail_color.lstrip('#')
             hex_fix = fix_color.lstrip('#')
             
             fill_fail = PatternFill(start_color=hex_fail, end_color=hex_fail, fill_type="solid")
             fill_fix = PatternFill(start_color=hex_fix, end_color=hex_fix, fill_type="solid")
 
-            last_col_idx = df.shape[1]  # คอลัมน์ result อยู่ขวาสุด
+            last_col_idx = df.shape[1]
 
-            # วนลูปเฉพาะ Data (แถวที่ 5 เป็นต้นไป -> openpyxl row index เริ่มที่ 5)
             for row in range(5, df.shape[0] + 1):
                 res_val = worksheet.cell(row=row, column=last_col_idx).value
                 
                 if highlight_type == "checked" and res_val == "f":
-                    # ไฮไลต์สีทั้งแถวเมื่อเจอค่า f
                     for col in range(1, last_col_idx + 1):
                         worksheet.cell(row=row, column=col).fill = fill_fail
 
                 elif highlight_type == "fixed" and res_val == "f":
-                    # ไฮไลต์เฉพาะเซลล์ pdschTypeBGain ที่ทำการแก้ไขให้
                     if target_col_idx is not None:
                         worksheet.cell(row=row, column=target_col_idx + 1).fill = fill_fix
 
@@ -93,7 +110,7 @@ def df_to_excel_bytes_styled(df: pd.DataFrame, highlight_type=None, target_col_i
     return output.getvalue()
 
 # ==================================================
-# 5. PROCESS EXCEL FUNCTION
+# 6. PROCESS EXCEL FUNCTION
 # ==================================================
 def process_excel(uploaded_file):
     file_bytes = uploaded_file.getvalue()
@@ -142,7 +159,7 @@ def process_excel(uploaded_file):
     fix_mask = crs_series.isin(VALID_PAIRS) & crs_series.notna()
     fixed_pdsch[fix_mask] = expected_pdsch[fix_mask]
     df_fixed.iloc[4:, pdsch_col_idx] = fixed_pdsch.values
-    df_fixed[len(df_fixed.columns)] = res_col  # ใส่คอลัมน์ result ไว้ใช้อ้างอิงการใส่สี
+    df_fixed[len(df_fixed.columns)] = res_col
 
     return {
         "filename": uploaded_file.name,
@@ -154,9 +171,9 @@ def process_excel(uploaded_file):
     }
 
 # ==================================================
-# 6. CONTROLS FOR ADDING/REMOVING WEEKS
+# 7. CONTROLS FOR ADDING/REMOVING WEEKS
 # ==================================================
-st.markdown("### 🛠️ จัดการชุดไฟล์ (Week)")
+st.markdown(f"### {section_manage_title}")
 ctrl_col1, ctrl_col2, _ = st.columns([1, 1, 3])
 
 with ctrl_col1:
@@ -177,7 +194,7 @@ st.caption(f"จำนวนชุดอัปโหลดปัจจุบั�
 st.divider()
 
 # ==================================================
-# 7. DYNAMIC UPLOAD SECTIONS
+# 8. DYNAMIC UPLOAD SECTIONS
 # ==================================================
 weeks_data_list = []
 cols_per_row = 3
@@ -206,7 +223,7 @@ for i in range(0, st.session_state.num_weeks, cols_per_row):
                 })
 
 # ==================================================
-# 8. PROCESS ALL WEEKS
+# 9. PROCESS ALL WEEKS
 # ==================================================
 chart_rows = []
 all_weeks_results = {}
@@ -239,15 +256,14 @@ if has_files:
                     })
 
 # ==================================================
-# 9. COMBINED CHART WITH CUSTOM COLORS
+# 10. COMBINED CHART
 # ==================================================
 if chart_rows:
     st.divider()
-    st.header("📈 กราฟเปรียบเทียบผลรวมทุก Week")
+    st.header(section_chart_title)
 
     combined_df = pd.DataFrame(chart_rows).set_index("Week")
 
-    # แสดงกราฟแท่งโดยใช้สีกำหนดจาก Sidebar
     st.bar_chart(
         combined_df,
         color=[color_incorrect_chart, color_correct_chart],
@@ -258,10 +274,10 @@ if chart_rows:
     st.dataframe(combined_df.reset_index(), use_container_width=True, hide_index=True)
 
     # ==================================================
-    # 10. DOWNLOAD SECTION (ZIP + SEPARATE FILES)
+    # 11. DOWNLOAD SECTION (ZIP + SEPARATE FILES)
     # ==================================================
     st.divider()
-    st.header("📥 ดาวน์โหลดไฟล์ Excel")
+    st.header(section_download_title)
 
     tab_titles = [f"📦 {w_name}" for w_name in all_weeks_results.keys()]
     if tab_titles:
@@ -280,8 +296,8 @@ if chart_rows:
                             r["fixed_df"], highlight_type="fixed", target_col_idx=r["pdsch_col_idx"],
                             fail_color=color_fail_excel, fix_color=color_fix_excel
                         )
-                        z.writestr(f"checked_{r['filename']}", chk_b)
-                        z.writestr(f"fixed_{r['filename']}", fix_b)
+                        z.writestr(f"{prefix_checked}{r['filename']}", chk_b)
+                        z.writestr(f"{prefix_fixed}{r['filename']}", fix_b)
 
                 st.download_button(
                     f"📦 ดาวน์โหลดไฟล์ทั้งหมดของ {w_name} (ZIP รวม)",
@@ -314,7 +330,7 @@ if chart_rows:
                             st.download_button(
                                 label=f"⬇️ โหลด Checked ({r['filename']})",
                                 data=chk_bytes,
-                                file_name=f"checked_{r['filename']}",
+                                file_name=f"{prefix_checked}{r['filename']}",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True,
                                 key=f"btn_chk_{tab_idx}_{file_idx}_{r['filename']}"
@@ -324,7 +340,7 @@ if chart_rows:
                             st.download_button(
                                 label=f"⬇️ โหลด Fixed ({r['filename']})",
                                 data=fix_bytes,
-                                file_name=f"fixed_{r['filename']}",
+                                file_name=f"{prefix_fixed}{r['filename']}",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True,
                                 key=f"btn_fix_{tab_idx}_{file_idx}_{r['filename']}"
