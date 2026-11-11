@@ -18,14 +18,14 @@ st.set_page_config(
 st.sidebar.header("⚙️ การตั้งค่าระบบ")
 
 with st.sidebar.expander("📝 ปรับแต่งข้อความหัวข้อ (Headers)", expanded=False):
-    app_title = st.text_input("หัวข้อหลัก (Title):", value="⚡ CRS Gain Validator (Ultra Fast)")
+    app_title = st.text_input("หัวข้อหลัก (Title):", value=" CRS Gain Validator ")
     app_subtitle = st.text_input(
         "หัวข้อย่อย (Subheader):", 
         value="ระบบตรวจเช็คและแก้ไข CRS Gain, pdschTypeBGain อัตโนมัติ"
     )
     section_manage_title = st.text_input("หัวข้อส่วนจัดการชุดไฟล์:", value="🛠️ จัดการชุดไฟล์ (Week)")
-    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", value="📈 กราฟเปรียบเทียบผลรวมทุก Week")
-    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", value="📥 ดาวน์โหลดไฟล์ Excel")
+    section_chart_title = st.text_input("หัวข้อส่วนแสดงกราฟ:", value="CRS Gain, pdschTypeBGain")
+    section_download_title = st.text_input("หัวข้อส่วนดาวน์โหลด:", value=" ดาวน์โหลดไฟล์ Excel")
 
 with st.sidebar.expander("📄 ตั้งชื่อไฟล์ Export", expanded=False):
     prefix_checked = st.text_input("คำนำหน้าไฟล์ Checked:", value="checked_")
