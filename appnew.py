@@ -3,6 +3,7 @@ import re
 import zipfile
 import pandas as pd
 import streamlit as st
+import altair as alt
 from openpyxl.styles import PatternFill
 
 st.set_page_config(
@@ -266,22 +267,51 @@ if has_files:
                     })
 
 # ==================================================
-# 7. COMBINED CHART
+# 7. COMBINED CHART (ใช้อัลแตร์ Altair เพื่อดึง Header ลงรูปตอน Download)
 # ==================================================
 if chart_rows:
     st.divider()
-    st.header(section_chart_title)
 
-    combined_df = pd.DataFrame(chart_rows).set_index("Week")
-
-    st.bar_chart(
-        combined_df,
-        color=[color_incorrect_chart, color_correct_chart],
-        height=500,
-        stack=True
+    combined_df = pd.DataFrame(chart_rows)
+    
+    # แปลงข้อมูลเป็น Long Format สำหรับสร้าง Stacked Bar Chart
+    df_melted = combined_df.melt(
+        id_vars=["Week"], 
+        value_vars=["f - Incorrect", "t - Correct"],
+        var_name="Status", 
+        value_name="Count"
     )
 
-    st.dataframe(combined_df.reset_index(), use_container_width=True, hide_index=True)
+    # สร้างกราฟพร้อมกำหนด Title ลงในพร็อพเพอร์ตี้ของตัวกราฟโดยตรง
+    chart = (
+        alt.Chart(df_melted)
+        .mark_bar()
+        .encode(
+            x=alt.X("Week:N", title=None, axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("Count:Q", title="Count"),
+            color=alt.Color(
+                "Status:N",
+                scale=alt.Scale(
+                    domain=["f - Incorrect", "t - Correct"],
+                    range=[color_incorrect_chart, color_correct_chart]
+                ),
+                legend=alt.Legend(orient="bottom", title=None)
+            ),
+            tooltip=["Week", "Status", "Count"]
+        )
+        .properties(
+            title=alt.TitleParams(
+                text=section_chart_title,
+                fontSize=20,
+                anchor="start",
+                offset=15
+            ),
+            height=500
+        )
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+    st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
     # ==================================================
     # 8. DOWNLOAD SECTION
