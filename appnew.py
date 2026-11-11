@@ -3,7 +3,7 @@ import re
 import zipfile
 import pandas as pd
 import streamlit as st
-import plotly.express as px
+import matplotlib.pyplot as plt
 from openpyxl.styles import PatternFill
 
 st.set_page_config(
@@ -298,50 +298,50 @@ if has_files:
                     })
 
 # ==================================================
-# 8. COMBINED PLOTLY CHART (ฝังหัวข้อลงรูปภาพดาวน์โหลด)
+# 8. MATPLOTLIB CHART (ฝังหัวข้อลงไฟล์ภาพสำหรับดาวน์โหลด)
 # ==================================================
 if chart_rows:
     st.divider()
-    
-    # แปลง DataFrame เพื่อป้อนให้ Plotly
+    st.header(st.session_state.section_chart_title)
+
     combined_df = pd.DataFrame(chart_rows)
-    df_melted = combined_df.melt(id_vars=["Week"], value_vars=["f - Incorrect", "t - Correct"], 
-                                 var_name="Status", value_name="Count")
 
-    # สร้างกราฟ Plotly Express
-    fig = px.bar(
-        df_melted,
-        x="Week",
-        y="Count",
-        color="Status",
-        title=f"<b>{st.session_state.section_chart_title}</b>",
-        color_discrete_map={
-            "f - Incorrect": st.session_state.color_incorrect_chart,
-            "t - Correct": st.session_state.color_correct_chart
-        },
-        barmode="stack",
-        height=520
+    # สร้างรูปภาพกราฟด้วย Matplotlib
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=200)
+    
+    weeks = combined_df["Week"]
+    incorrect_vals = combined_df["f - Incorrect"]
+    correct_vals = combined_df["t - Correct"]
+
+    # พล็อต Stacked Bar Chart
+    bars1 = ax.bar(weeks, incorrect_vals, label="f - Incorrect", color=st.session_state.color_incorrect_chart)
+    bars2 = ax.bar(weeks, correct_vals, bottom=incorrect_vals, label="t - Correct", color=st.session_state.color_correct_chart)
+
+    # ฝังหัวข้อหลักลงไปในตัวภาพกราฟ
+    ax.set_title(st.session_state.section_chart_title, fontsize=16, fontweight='bold', pad=15)
+    ax.set_xlabel("รายการ Week", fontsize=11, labelpad=10)
+    ax.set_ylabel("จำนวนจุดตรวจเช็ค (Count)", fontsize=11, labelpad=10)
+    ax.legend(title="ผลการตรวจเช็ค", loc="upper right")
+    ax.grid(axis='y', linestyle='--', alpha=0.5)
+
+    plt.tight_layout()
+
+    # แสดงผลบน Streamlit UI
+    st.pyplot(fig)
+
+    # แปลงรูปภาพกราฟเป็น Bytes สำหรับปุ่มดาวน์โหลดติดหัวข้อ
+    img_buffer = io.BytesIO()
+    fig.savefig(img_buffer, format="png", bbox_inches="tight")
+    img_buffer.seek(0)
+
+    # ปุ่มดาวน์โหลดรูปภาพกราฟ (ติดหัวข้อไปด้วยแน่นอน)
+    st.download_button(
+        label="🖼️ ดาวน์โหลดรูปภาพกราฟความละเอียดสูง (ติดหัวข้อ)",
+        data=img_buffer.getvalue(),
+        file_name="crs_chart_with_header.png",
+        mime="image/png",
+        use_container_width=True
     )
-
-    # ปรับแต่งการแสดงผลหัวข้อและการบันทึกรูปภาพ
-    fig.update_layout(
-        title={
-            'text': f"<b>{st.session_state.section_chart_title}</b>",
-            'y': 0.95,
-            'x': 0.0,
-            'xanchor': 'left',
-            'yanchor': 'top',
-            'font': dict(size=22, color="#333333")
-        },
-        margin=dict(l=40, r=40, t=80, b=40),
-        legend_title_text="ผลการตรวจเช็ค",
-        xaxis_title="รายการ Week",
-        yaxis_title="จำนวนจุดตรวจเช็ค (Count)",
-        font=dict(family="Arial, sans-serif", size=13)
-    )
-
-    # แสดงผล Plotly Chart (สามารถดาวน์โหลดเป็น PNG ได้ทันที และหัวข้อจะติดเข้าไปในรูปภาพด้วย)
-    st.plotly_chart(fig, use_container_width=True)
 
     st.dataframe(combined_df, use_container_width=True, hide_index=True)
 
